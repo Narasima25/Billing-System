@@ -1,0 +1,21 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Electron Forge build and compilation outputs
+out/
+dist/
+
+# Local SQLite binary database files (protects your store data)
+*.db
+*.sqlite
+*.sqlite3
+
+# Operating System garbage files
+.DS_Store
+Thumbs.db
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

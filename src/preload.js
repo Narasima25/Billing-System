@@ -1,0 +1,102 @@
+// ═══════════════════════════════════════════════════════════════════════════
+//  preload.js — Secure IPC Bridge (contextBridge)
+//  Exposes all API channels grouped by module namespace.
+//  contextIsolation: true, nodeIntegration: false
+// ═══════════════════════════════════════════════════════════════════════════
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('api', {
+
+  // ─── Auth ────────────────────────────────────────────────────────────
+  auth: {
+    login: (credentials) => ipcRenderer.invoke('auth:login', credentials),
+    getUsers: () => ipcRenderer.invoke('auth:get-users'),
+    createUser: (data) => ipcRenderer.invoke('auth:create-user', data),
+    updateUser: (data) => ipcRenderer.invoke('auth:update-user', data),
+    deleteUser: (id) => ipcRenderer.invoke('auth:delete-user', id),
+  },
+
+  // ─── Categories ──────────────────────────────────────────────────────
+  categories: {
+    getAll: () => ipcRenderer.invoke('categories:get-all'),
+    add: (data) => ipcRenderer.invoke('categories:add', data),
+    update: (data) => ipcRenderer.invoke('categories:update', data),
+    delete: (id) => ipcRenderer.invoke('categories:delete', id),
+  },
+
+  // ─── Suppliers ─────────────────────────────────────────────────────
+  suppliers: {
+    getAll: () => ipcRenderer.invoke('suppliers:get-all'),
+    add: (data) => ipcRenderer.invoke('suppliers:add', data),
+    update: (data) => ipcRenderer.invoke('suppliers:update', data),
+    delete: (id) => ipcRenderer.invoke('suppliers:delete', id),
+    getPurchases: (id) => ipcRenderer.invoke('suppliers:get-purchases', id),
+  },
+
+  // ─── Products ────────────────────────────────────────────────────────
+  products: {
+    getAll: (params) => ipcRenderer.invoke('products:get-all', params),
+    lookupBarcode: (barcode) => ipcRenderer.invoke('products:lookup-barcode', barcode),
+    add: (data) => ipcRenderer.invoke('products:add', data),
+    update: (data) => ipcRenderer.invoke('products:update', data),
+    delete: (id) => ipcRenderer.invoke('products:delete', id),
+  },
+
+
+  // ─── Inventory ───────────────────────────────────────────────────────
+  inventory: {
+    stockIn: (data) => ipcRenderer.invoke('inventory:stock-in', data),
+    adjust: (data) => ipcRenderer.invoke('inventory:adjust', data),
+    getAdjustments: (params) => ipcRenderer.invoke('inventory:get-adjustments', params),
+    auditData: () => ipcRenderer.invoke('inventory:audit-data'),
+  },
+
+  // ─── Batches ─────────────────────────────────────────────────────────
+  batches: {
+    add: (data) => ipcRenderer.invoke('batches:add', data),
+    getByProduct: (productId) => ipcRenderer.invoke('batches:get-by-product', productId),
+    getExpiring: (days) => ipcRenderer.invoke('batches:get-expiring', days),
+    getAll: () => ipcRenderer.invoke('batches:get-all')
+  },
+
+  // ─── Billing ─────────────────────────────────────────────────────────
+  billing: {
+    checkout: (data) => ipcRenderer.invoke('billing:checkout', data),
+    getSale: (id) => ipcRenderer.invoke('billing:get-sale', id),
+    getRecentSales: (limit) => ipcRenderer.invoke('billing:get-recent-sales', limit),
+    getLastSale: () => ipcRenderer.invoke('billing:get-last-sale'),
+  },
+
+  // ─── Purchases ───────────────────────────────────────────────────────
+  purchases: {
+    add: (data) => ipcRenderer.invoke('purchases:add', data),
+    getAll: (params) => ipcRenderer.invoke('purchases:get-all', params),
+  },
+
+  // ─── Dashboard ───────────────────────────────────────────────────────
+  dashboard: {
+    getStats: () => ipcRenderer.invoke('dashboard:get-stats'),
+  },
+
+  // ─── Reports ─────────────────────────────────────────────────────────
+  reports: {
+    sales: (params) => ipcRenderer.invoke('reports:sales', params),
+    inventory: (params) => ipcRenderer.invoke('reports:inventory', params),
+    purchases: (params) => ipcRenderer.invoke('reports:purchases', params),
+    profit: (params) => ipcRenderer.invoke('reports:profit', params),
+  },
+
+  // ─── Settings ────────────────────────────────────────────────────────
+  settings: {
+    get: (key) => ipcRenderer.invoke('settings:get', key),
+    getAll: () => ipcRenderer.invoke('settings:get-all'),
+    set: (data) => ipcRenderer.invoke('settings:set', data),
+  },
+
+  // ─── Backup ──────────────────────────────────────────────────────────
+  backup: {
+    export: () => ipcRenderer.invoke('backup:export'),
+    import: (data) => ipcRenderer.invoke('backup:import', data),
+  },
+});
