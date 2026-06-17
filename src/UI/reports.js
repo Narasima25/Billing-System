@@ -45,6 +45,15 @@ const ReportsModule = (() => {
             <label class="form-label">To</label>
             <input type="date" class="form-input" id="rpt-sales-to" value="${today}">
           </div>
+          <div class="form-group">
+            <label class="form-label">Payment Mode</label>
+            <select class="form-select" id="rpt-sales-payment-mode" style="width:120px;">
+              <option value="all">All</option>
+              <option value="cash">Cash</option>
+              <option value="upi">UPI</option>
+              <option value="card">Card</option>
+            </select>
+          </div>
           <div class="btn-group" style="margin-bottom:0;">
             <button class="btn btn-primary btn-sm" id="rpt-sales-run">Generate</button>
             <button class="btn btn-secondary btn-sm" id="rpt-sales-today" title="Today">Today</button>
@@ -154,10 +163,11 @@ const ReportsModule = (() => {
   async function runSalesReport() {
     const from = document.getElementById('rpt-sales-from').value;
     const to = document.getElementById('rpt-sales-to').value;
+    const paymentMode = document.getElementById('rpt-sales-payment-mode').value;
     if (!from || !to) { showToast('Select date range', 'warning'); return; }
 
     try {
-      const { sales, summary } = await window.api.reports.sales({ startDate: from, endDate: to });
+      const { sales, summary } = await window.api.reports.sales({ startDate: from, endDate: to, paymentMode });
 
       // Summary cards
       const summaryDiv = document.getElementById('rpt-sales-summary');

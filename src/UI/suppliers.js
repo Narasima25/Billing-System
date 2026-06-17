@@ -24,7 +24,6 @@ const SuppliersModule = (() => {
           <p class="text-muted text-sm">Manage your product suppliers</p>
         </div>
         <div class="btn-group">
-          <button class="btn btn-secondary" id="btn-new-purchase">🛍️ New Purchase</button>
           <button class="btn btn-primary" id="btn-add-supplier">+ Add Supplier</button>
         </div>
       </div>
@@ -38,7 +37,6 @@ const SuppliersModule = (() => {
                 <th>Contact Person</th>
                 <th>Mobile</th>
                 <th>Email</th>
-                <th>GST Number</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -59,6 +57,17 @@ const SuppliersModule = (() => {
           <div id="supplier-history-content"></div>
         </div>
       </div>
+
+      <!-- Products from Supplier Sub-Panel -->
+      <div class="modal-overlay" id="modal-supplier-products">
+        <div class="modal-box lg">
+          <div class="modal-header">
+            <div class="modal-title" id="supplier-products-title">📦 Products</div>
+            <button class="modal-close" onclick="closeModal('modal-supplier-products')">✕</button>
+          </div>
+          <div id="supplier-products-content"></div>
+        </div>
+      </div>
     `;
   }
 
@@ -68,19 +77,6 @@ const SuppliersModule = (() => {
     document.getElementById('btn-save-supplier').addEventListener('click', saveSupplier);
     document.getElementById('form-supplier').addEventListener('submit', (e) => { e.preventDefault(); saveSupplier(); });
 
-    document.getElementById('btn-new-purchase').addEventListener('click', openPurchaseModal);
-    document.getElementById('btn-save-purchase').addEventListener('click', savePurchase);
-    document.getElementById('form-purchase').addEventListener('submit', (e) => { e.preventDefault(); savePurchase(); });
-
-    // Purchase barcode scan
-    document.getElementById('purchase-barcode').addEventListener('keydown', async (e) => {
-      if (e.key !== 'Enter') return;
-      const barcode = e.target.value.trim();
-      e.target.value = '';
-      if (!barcode) return;
-      await addPurchaseItem(barcode);
-    });
-
     // Table actions
     document.getElementById('suppliers-tbody').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
@@ -89,7 +85,13 @@ const SuppliersModule = (() => {
       if (btn.dataset.action === 'edit') editSupplier(id);
       if (btn.dataset.action === 'delete') deleteSupplier(id);
       if (btn.dataset.action === 'history') viewHistory(id, btn.dataset.name);
+      if (btn.dataset.action === 'products') viewProducts(id, btn.dataset.name);
+      if (btn.dataset.action === 'add-purchase') openAddPurchase(id, btn.dataset.name);
     });
+
+    document.getElementById('btn-add-purchase-item').addEventListener('click', addPurchaseItemRow);
+    document.getElementById('btn-save-purchase').addEventListener('click', savePurchase);
+    document.getElementById('form-add-purchase').addEventListener('submit', (e) => { e.preventDefault(); savePurchase(); });
   }
 
   async function loadSuppliers() {
@@ -105,12 +107,13 @@ const SuppliersModule = (() => {
         <td>${s.contact_person || '—'}</td>
         <td class="font-mono text-sm">${s.mobile || '—'}</td>
         <td class="text-sm">${s.email || '—'}</td>
-        <td class="text-sm">${s.gst_number || '—'}</td>
         <td>
           <div class="btn-group" style="gap:4px;">
-            <button class="btn btn-ghost btn-sm" data-action="history" data-id="${s.id}" data-name="${s.name}">📋</button>
-            <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${s.id}">✏️</button>
-            <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${s.id}">🗑️</button>
+            <button class="btn btn-ghost btn-sm" data-action="add-purchase" data-id="${s.id}" data-name="${s.name}" title="Add Purchase">➕</button>
+            <button class="btn btn-ghost btn-sm" data-action="history" data-id="${s.id}" data-name="${s.name}" title="Purchase History">📋</button>
+            <button class="btn btn-ghost btn-sm" data-action="products" data-id="${s.id}" data-name="${s.name}" title="Products Supplied">📦</button>
+            <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${s.id}" title="Edit">✏️</button>
+            <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${s.id}" title="Delete">🗑️</button>
           </div>
         </td>
       </tr>`).join('');
@@ -126,7 +129,6 @@ const SuppliersModule = (() => {
     document.getElementById('sup-contact').value = supplier ? (supplier.contact_person || '') : '';
     document.getElementById('sup-mobile').value = supplier ? (supplier.mobile || '') : '';
     document.getElementById('sup-email').value = supplier ? (supplier.email || '') : '';
-    document.getElementById('sup-gst').value = supplier ? (supplier.gst_number || '') : '';
     document.getElementById('sup-address').value = supplier ? (supplier.address || '') : '';
     openModal('modal-supplier');
   }
@@ -138,7 +140,6 @@ const SuppliersModule = (() => {
       contactPerson: document.getElementById('sup-contact').value.trim(),
       mobile: document.getElementById('sup-mobile').value.trim(),
       email: document.getElementById('sup-email').value.trim(),
-      gstNumber: document.getElementById('sup-gst').value.trim(),
       address: document.getElementById('sup-address').value.trim(),
     };
     if (!data.name) { showToast('Supplier name is required', 'warning'); return; }
@@ -195,101 +196,190 @@ const SuppliersModule = (() => {
     openModal('modal-supplier-history');
   }
 
-  // ─── Purchase Entry ──────────────────────────────────────────────────
-  let purchaseItems = [];
+  async function viewProducts(id, name) {
+    document.getElementById('supplier-products-title').textContent = `📦 Products supplied by ${name}`;
+    const div = document.getElementById('supplier-products-content');
+    div.innerHTML = '<p class="text-muted" style="padding:20px;text-align:center;">Loading products...</p>';
+    openModal('modal-supplier-products');
 
-  async function openPurchaseModal() {
-    purchaseItems = [];
-    document.getElementById('purchase-invoice').value = '';
-    document.getElementById('purchase-barcode').value = '';
-    renderPurchaseItems();
-
-    // Load suppliers into dropdown
-    const suppliers = await window.api.suppliers.getAll();
-    document.getElementById('purchase-supplier').innerHTML =
-      '<option value="">— Select Supplier —</option>' +
-      suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-
-    openModal('modal-purchase');
+    try {
+      const data = await window.api.products.getAll({ supplierId: id, perPage: 100 });
+      const products = data.products;
+      if (products.length === 0) {
+        div.innerHTML = '<p class="text-muted" style="padding:20px;text-align:center;">No products found for this supplier</p>';
+      } else {
+        div.innerHTML = `<div class="data-table-wrap" style="max-height: 400px;"><table class="data-table"><thead><tr>
+          <th>Product Name</th><th>Barcode</th><th>Category</th><th>Selling Price</th><th>Stock</th>
+        </tr></thead><tbody>${products.map(p => {
+          const isOOS = p.stock_quantity <= 0;
+          return `<tr>
+          <td class="fw-700">${p.product_name}</td>
+          <td class="font-mono text-sm">${p.barcode}</td>
+          <td class="text-sm">${p.category_name || '—'}</td>
+          <td class="fw-700">${formatRupees(p.selling_price_paise)}</td>
+          <td class="fw-700 ${isOOS ? 'text-rose' : 'text-green'}">${p.stock_quantity}</td>
+        </tr>`;
+        }).join('')}</tbody></table></div>`;
+      }
+    } catch (err) {
+      div.innerHTML = '<p class="text-rose" style="padding:20px;text-align:center;">Error loading products</p>';
+    }
   }
 
-  async function addPurchaseItem(barcode) {
-    const product = await window.api.products.lookupBarcode(barcode);
-    if (!product) { showToast(`Barcode "${barcode}" not found`, 'error'); return; }
+  // ─── Add Purchase Logic ──────────────────────────────────────────────────
+  let currentSupplierProducts = [];
 
-    const existing = purchaseItems.find(i => i.productId === product.id);
-    if (existing) {
-      existing.quantity++;
-    } else {
-      purchaseItems.push({
-        productId: product.id,
-        productName: product.product_name,
-        barcode: product.barcode,
-        quantity: 1,
-        unitCostPaise: product.purchase_price_paise || 0,
-      });
+  async function openAddPurchase(supplierId, supplierName) {
+    document.getElementById('purchase-supplier-id').value = supplierId;
+    document.getElementById('purchase-supplier-name').value = supplierName;
+    document.getElementById('purchase-invoice-number').value = '';
+    document.getElementById('purchase-notes').value = '';
+    document.getElementById('purchase-items-tbody').innerHTML = '';
+    document.getElementById('purchase-grand-total').textContent = '0.00';
+
+    openModal('modal-add-purchase');
+
+    // Load products for this supplier
+    try {
+      const data = await window.api.products.getAll({ supplierId: supplierId, perPage: 1000 });
+      currentSupplierProducts = data.products || [];
+      addPurchaseItemRow(); // Add one empty row by default
+    } catch (err) {
+      showToast('Error loading products for supplier', 'error');
+      currentSupplierProducts = [];
     }
-    renderPurchaseItems();
   }
 
-  function renderPurchaseItems() {
-    const div = document.getElementById('purchase-items-list');
-    if (purchaseItems.length === 0) {
-      div.innerHTML = '<p class="text-muted text-sm" style="padding:12px 0;">Scan product barcodes to add items</p>';
-      return;
-    }
-    let total = 0;
-    div.innerHTML = `<div class="data-table-wrap"><table class="data-table"><thead><tr>
-      <th>Product</th><th>Qty</th><th>Unit Cost (₹)</th><th>Total</th><th></th>
-    </tr></thead><tbody>${purchaseItems.map((item, idx) => {
-      const lineTotal = item.unitCostPaise * item.quantity;
-      total += lineTotal;
-      return `<tr>
-        <td class="fw-700">${item.productName}</td>
-        <td><input type="number" class="form-input" style="width:60px;padding:4px 8px;font-size:13px;"
-          value="${item.quantity}" min="1" onchange="SuppliersModule._updatePurchaseQty(${idx}, this.value)"></td>
-        <td><input type="number" class="form-input" style="width:100px;padding:4px 8px;font-size:13px;"
-          value="${(item.unitCostPaise/100).toFixed(2)}" step="0.01" min="0"
-          onchange="SuppliersModule._updatePurchaseCost(${idx}, this.value)"></td>
-        <td class="fw-700">${formatRupees(lineTotal)}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="SuppliersModule._removePurchaseItem(${idx})">✕</button></td>
-      </tr>`;
-    }).join('')}</tbody></table></div>
-    <div style="text-align:right;font-size:16px;font-weight:800;margin-top:8px;">Total: <span class="text-teal">${formatRupees(total)}</span></div>`;
+  function addPurchaseItemRow() {
+    const tbody = document.getElementById('purchase-items-tbody');
+    const tr = document.createElement('tr');
+    tr.className = 'purchase-item-row';
+
+    const productOptions = currentSupplierProducts.map(p => 
+      `<option value="${p.id}" data-cost="${p.purchase_price_paise || 0}">${p.product_name} (${p.barcode})</option>`
+    ).join('');
+
+    tr.innerHTML = `
+      <td>
+        <select class="form-select purchase-product-select" required>
+          <option value="">— Select Product —</option>
+          ${productOptions}
+        </select>
+      </td>
+      <td>
+        <input type="number" class="form-input purchase-qty" value="1" min="1" required style="width: 100%;">
+      </td>
+      <td>
+        <input type="number" class="form-input purchase-cost" value="0.00" step="0.01" min="0" required style="width: 100%;">
+      </td>
+      <td class="fw-700 text-teal purchase-line-total">₹0.00</td>
+      <td>
+        <button type="button" class="btn btn-ghost btn-sm btn-remove-item" title="Remove" style="color:var(--accent-rose);">✕</button>
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+
+    // Bind events for this row
+    const select = tr.querySelector('.purchase-product-select');
+    const qty = tr.querySelector('.purchase-qty');
+    const cost = tr.querySelector('.purchase-cost');
+    const removeBtn = tr.querySelector('.btn-remove-item');
+
+    select.addEventListener('change', (e) => {
+      const option = e.target.selectedOptions[0];
+      if (option && option.value) {
+        cost.value = (parseInt(option.dataset.cost) / 100).toFixed(2);
+      } else {
+        cost.value = '0.00';
+      }
+      updatePurchaseTotal();
+    });
+
+    qty.addEventListener('input', updatePurchaseTotal);
+    cost.addEventListener('input', updatePurchaseTotal);
+
+    removeBtn.addEventListener('click', () => {
+      tr.remove();
+      updatePurchaseTotal();
+    });
+  }
+
+  function updatePurchaseTotal() {
+    const rows = document.querySelectorAll('.purchase-item-row');
+    let grandTotalPaise = 0;
+
+    rows.forEach(row => {
+      const qtyStr = row.querySelector('.purchase-qty').value;
+      const costStr = row.querySelector('.purchase-cost').value;
+      const qty = parseInt(qtyStr) || 0;
+      const cost = parseFloat(costStr) || 0;
+      
+      const lineTotalPaise = Math.round(qty * cost * 100);
+      row.querySelector('.purchase-line-total').textContent = formatRupees(lineTotalPaise);
+      
+      grandTotalPaise += lineTotalPaise;
+    });
+
+    document.getElementById('purchase-grand-total').textContent = (grandTotalPaise / 100).toFixed(2);
   }
 
   async function savePurchase() {
-    const supplierId = document.getElementById('purchase-supplier').value;
-    const invoiceNumber = document.getElementById('purchase-invoice').value.trim();
-    if (!supplierId) { showToast('Select a supplier', 'warning'); return; }
-    if (purchaseItems.length === 0) { showToast('Add at least one item', 'warning'); return; }
+    const supplierId = parseInt(document.getElementById('purchase-supplier-id').value);
+    const invoiceNumber = document.getElementById('purchase-invoice-number').value.trim();
+    const notes = document.getElementById('purchase-notes').value.trim();
+    
+    const items = [];
+    const rows = document.querySelectorAll('.purchase-item-row');
+    
+    for (const row of rows) {
+      const select = row.querySelector('.purchase-product-select');
+      const productId = select.value;
+      const qty = parseInt(row.querySelector('.purchase-qty').value) || 0;
+      const cost = parseFloat(row.querySelector('.purchase-cost').value) || 0;
+      
+      if (productId && qty > 0) {
+        items.push({
+          productId: parseInt(productId),
+          quantity: qty,
+          unitCostPaise: Math.round(cost * 100)
+        });
+      }
+    }
+
+    if (items.length === 0) {
+      showToast('Please add at least one valid product to the purchase', 'warning');
+      return;
+    }
+
+    const btn = document.getElementById('btn-save-purchase');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
 
     try {
       const result = await window.api.purchases.add({
-        supplierId: parseInt(supplierId),
+        supplierId,
         invoiceNumber,
-        items: purchaseItems.map(i => ({
-          productId: i.productId,
-          quantity: i.quantity,
-          unitCostPaise: i.unitCostPaise,
-        })),
+        items,
+        notes
       });
+
       if (result.success) {
-        closeModal('modal-purchase');
-        showToast('Purchase recorded — inventory updated', 'success');
-        loadSuppliers();
+        showToast('Purchase saved successfully!', 'success');
+        closeModal('modal-add-purchase');
+        // If we want, we can show history immediately, but let's just close for now
       } else {
-        showToast(result.error || 'Save failed', 'error');
+        showToast(result.error || 'Failed to save purchase', 'error');
       }
     } catch (err) {
       showToast('Error saving purchase', 'error');
     }
+
+    btn.disabled = false;
+    btn.textContent = 'Save Purchase';
   }
 
   return {
     init,
-    _updatePurchaseQty: (idx, val) => { purchaseItems[idx].quantity = parseInt(val) || 1; renderPurchaseItems(); },
-    _updatePurchaseCost: (idx, val) => { purchaseItems[idx].unitCostPaise = parseRupeesToPaise(val); renderPurchaseItems(); },
-    _removePurchaseItem: (idx) => { purchaseItems.splice(idx, 1); renderPurchaseItems(); },
   };
 })();

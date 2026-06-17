@@ -7,7 +7,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const initSqlJs = require('sql.js');
+const Database = require('better-sqlite3');
 const { initializeSchema, hashPassword, generateReceiptNumber } = require('./Database/schema');
 
 const dbPath = path.join(__dirname, '../pos_store.db');
@@ -15,54 +15,25 @@ let db;
 
 // ─── Database Initialization ────────────────────────────────────────────────
 async function startDatabase() {
-  const SQL = await initSqlJs();
-
-  if (fs.existsSync(dbPath)) {
-    const fileBuffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(fileBuffer);
-    console.log('[DB] Loaded existing database.');
-    // Run schema to ensure all tables exist (migrations)
-    initializeSchema(db);
-    saveDatabaseToDisk();
-  } else {
-    db = new SQL.Database();
-    console.log('[DB] Creating fresh database...');
-    initializeSchema(db);
-    saveDatabaseToDisk();
-    console.log('[DB] Fresh database created with schema and seed data.');
-  }
-}
-
-function saveDatabaseToDisk() {
-  try {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(dbPath, buffer);
-  } catch (err) {
-    console.error('[DB] Save error:', err);
-  }
+  db = new Database(dbPath);
+  console.log('[DB] Connected to database at', dbPath);
+  
+  // Run schema to ensure all tables exist (migrations)
+  initializeSchema(db);
+  console.log('[DB] Database schema verified.');
 }
 
 // ─── Helper: Run query and return array of objects ──────────────────────────
 function queryAll(sql, params = []) {
-  const stmt = db.prepare(sql);
-  if (params.length) stmt.bind(params);
-  const results = [];
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-  return results;
+  return db.prepare(sql).all(...params);
 }
 
 function queryOne(sql, params = []) {
-  const results = queryAll(sql, params);
-  return results.length > 0 ? results[0] : null;
+  return db.prepare(sql).get(...params);
 }
 
 function runSql(sql, params = []) {
-  db.run(sql, params);
-  saveDatabaseToDisk();
+  return db.prepare(sql).run(...params);
 }
 
 // ─── Window Creation ────────────────────────────────────────────────────────
@@ -139,15 +110,15 @@ ipcMain.handle('auth:create-user', async (_e, { username, password, displayName,
   }
 });
 
-ipcMain.handle('auth:update-user', async (_e, { id, displayName, role, password, isActive }) => {
+ipcMain.handle('auth:update-user', async (_e, { id, username, displayName, role, password, isActive }) => {
   try {
     if (password) {
       const hash = hashPassword(password);
-      runSql("UPDATE users SET display_name=?, role=?, password_hash=?, is_active=?, updated_at=datetime('now','localtime') WHERE id=?",
-        [displayName, role, hash, isActive ? 1 : 0, id]);
+      runSql("UPDATE users SET username=?, display_name=?, role=?, password_hash=?, is_active=?, updated_at=datetime('now','localtime') WHERE id=?",
+        [username, displayName, role, hash, isActive ? 1 : 0, id]);
     } else {
-      runSql("UPDATE users SET display_name=?, role=?, is_active=?, updated_at=datetime('now','localtime') WHERE id=?",
-        [displayName, role, isActive ? 1 : 0, id]);
+      runSql("UPDATE users SET username=?, display_name=?, role=?, is_active=?, updated_at=datetime('now','localtime') WHERE id=?",
+        [username, displayName, role, isActive ? 1 : 0, id]);
     }
     return { success: true };
   } catch (err) {
@@ -261,7 +232,7 @@ ipcMain.handle('suppliers:get-purchases', async (_e, supplierId) => {
 
 // ─── PRODUCTS ────────────────────────────────────────────────────────────────
 
-ipcMain.handle('products:get-all', async (_e, { search, categoryId, page, perPage } = {}) => {
+ipcMain.handle('products:get-all', async (_e, { search, categoryId, supplierId, page, perPage } = {}) => {
   try {
     let sql = `SELECT p.*, c.name as category_name, s.name as supplier_name
                FROM products p
@@ -278,6 +249,10 @@ ipcMain.handle('products:get-all', async (_e, { search, categoryId, page, perPag
     if (categoryId) {
       sql += " AND p.category_id = ?";
       params.push(categoryId);
+    }
+    if (supplierId) {
+      sql += " AND (p.supplier_id = ? OR p.id IN (SELECT pi.product_id FROM purchase_items pi JOIN purchases pu ON pi.purchase_id = pu.id WHERE pu.supplier_id = ?))";
+      params.push(supplierId, supplierId);
     }
 
     // Count for pagination
@@ -330,24 +305,26 @@ ipcMain.handle('products:add', async (_e, data) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.barcode, data.productName, data.categoryId || null, data.brand || '',
-        data.supplierId || null, data.purchasePricePaise || 0, data.sellingPricePaise || 0,
-        data.gstPercent || 0, data.hsnCode || '', data.stockQuantity || 0,
-        data.minimumStockLevel || 5, data.description || ''
+        data.supplierId || null, data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0,
+        data.gstPercent ?? 0, data.hsnCode || '', data.stockQuantity ?? 0,
+        data.minimumStockLevel ?? 5, data.description || ''
       ]
     );
 
     const newProduct = queryOne("SELECT id FROM products WHERE barcode = ?", [data.barcode]);
 
-    if (data.stockQuantity > 0 && newProduct) {
-      runSql(
-        "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'add', ?, 'Initial Stock')",
-        [newProduct.id, data.stockQuantity]
-      );
+    if (newProduct) {
+      if (data.stockQuantity > 0) {
+        runSql(
+          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'add', ?, 'Initial Stock')",
+          [newProduct.id, data.stockQuantity]
+        );
+      }
 
       if (data.batchNumber || data.expiryDate) {
         runSql(
-          "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity) VALUES (?, ?, ?, ?)",
-          [newProduct.id, data.batchNumber || ('B-INIT-' + Date.now().toString().slice(-4)), data.expiryDate || '', data.stockQuantity]
+          "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+          [newProduct.id, data.batchNumber || ('B-INIT-' + Date.now().toString().slice(-4)), data.expiryDate || '', data.stockQuantity || 0, data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0]
         );
       }
     }
@@ -367,8 +344,8 @@ ipcMain.handle('products:update', async (_e, data) => {
        WHERE id=?`,
       [
         data.productName, data.categoryId || null, data.brand || '',
-        data.supplierId || null, data.purchasePricePaise || 0, data.sellingPricePaise || 0,
-        data.gstPercent || 0, data.hsnCode || '', data.minimumStockLevel || 5,
+        data.supplierId || null, data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0,
+        data.gstPercent ?? 0, data.hsnCode || '', data.minimumStockLevel ?? 5,
         data.description || '', data.id
       ]
     );
@@ -379,18 +356,18 @@ ipcMain.handle('products:update', async (_e, data) => {
         if (existingBatch) {
           runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', existingBatch.id]);
         } else {
-          const prod = queryOne("SELECT stock_quantity FROM products WHERE id = ?", [data.id]);
-          runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity) VALUES (?, ?, ?, ?)",
-            [data.id, data.batchNumber, data.expiryDate || '', prod ? prod.stock_quantity : 0]);
+          const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [data.id]);
+          runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+            [data.id, data.batchNumber, data.expiryDate || '', prod ? prod.stock_quantity : 0, prod ? prod.purchase_price_paise : 0, prod ? prod.selling_price_paise : 0]);
         }
       } else {
         const latestBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? ORDER BY id DESC LIMIT 1", [data.id]);
         if (latestBatch) {
           runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', latestBatch.id]);
         } else {
-          const prod = queryOne("SELECT stock_quantity FROM products WHERE id = ?", [data.id]);
-          runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity) VALUES (?, ?, ?, ?)",
-            [data.id, 'B-' + Date.now().toString().slice(-4), data.expiryDate || '', prod ? prod.stock_quantity : 0]);
+          const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [data.id]);
+          runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+            [data.id, 'B-' + Date.now().toString().slice(-4), data.expiryDate || '', prod ? prod.stock_quantity : 0, prod ? prod.purchase_price_paise : 0, prod ? prod.selling_price_paise : 0]);
         }
       }
     }
@@ -414,7 +391,7 @@ ipcMain.handle('products:delete', async (_e, id) => {
 
 // ─── INVENTORY ───────────────────────────────────────────────────────────────
 
-ipcMain.handle('inventory:stock-in', async (_e, { barcode, quantity, userId, batchNumber, expiryDate }) => {
+ipcMain.handle('inventory:stock-in', async (_e, { barcode, quantity, userId, batchNumber, expiryDate, purchasePricePaise, sellingPricePaise }) => {
   try {
     const product = queryOne("SELECT * FROM products WHERE barcode = ? AND is_active = 1", [barcode]);
     if (!product) return { success: false, error: 'Product not found' };
@@ -429,8 +406,8 @@ ipcMain.handle('inventory:stock-in', async (_e, { barcode, quantity, userId, bat
 
     if (batchNumber || expiryDate) {
       runSql(
-        "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity) VALUES (?, ?, ?, ?)",
-        [product.id, batchNumber || ('B-' + Date.now().toString().slice(-4)), expiryDate || '', quantity]
+        "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+        [product.id, batchNumber || ('B-' + Date.now().toString().slice(-4)), expiryDate || '', quantity, purchasePricePaise ?? product.purchase_price_paise, sellingPricePaise ?? product.selling_price_paise]
       );
     }
 
@@ -505,11 +482,11 @@ ipcMain.handle('inventory:audit-data', async () => {
 
 // ─── BATCHES ─────────────────────────────────────────────────────────────────
 
-ipcMain.handle('batches:add', async (_e, { productId, batchNumber, manufacturingDate, expiryDate, quantity }) => {
+ipcMain.handle('batches:add', async (_e, { productId, batchNumber, manufacturingDate, expiryDate, quantity, purchasePricePaise, sellingPricePaise }) => {
   try {
     runSql(
-      "INSERT INTO product_batches (product_id, batch_number, manufacturing_date, expiry_date, quantity) VALUES (?, ?, ?, ?, ?)",
-      [productId, batchNumber, manufacturingDate || '', expiryDate || '', quantity || 0]
+      "INSERT INTO product_batches (product_id, batch_number, manufacturing_date, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [productId, batchNumber, manufacturingDate || '', expiryDate || '', quantity || 0, purchasePricePaise ?? 0, sellingPricePaise ?? 0]
     );
     return { success: true };
   } catch (err) {
@@ -591,41 +568,86 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
 
     // Generate receipt number
     const receiptNumber = generateReceiptNumber(db);
-    saveDatabaseToDisk(); // Save the counter update
 
     // Insert sale
-    db.run(
+    const { lastInsertRowid: saleId } = db.prepare(
       `INSERT INTO sales (receipt_number, user_id, subtotal_paise, discount_paise,
         cgst_paise, sgst_paise, grand_total_paise, payment_mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [receiptNumber, userId || null, subtotalPaise, discount,
-       totalCgstPaise, totalSgstPaise, grandTotalPaise, paymentMode || 'cash']
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      receiptNumber, userId || null, subtotalPaise, discount,
+      totalCgstPaise, totalSgstPaise, grandTotalPaise, paymentMode || 'cash'
     );
-
-    const saleId = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
 
     // Insert sale items and deduct stock
     for (const item of cartItems) {
-      const lineTotal = item.unitPricePaise * item.quantity;
-
-      db.run(
-        `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, unit_price_paise, gst_percent, line_total_paise)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [saleId, item.productId, item.productName, item.barcode, item.quantity, item.unitPricePaise, item.gstPercent || 0, lineTotal]
-      );
-
       // Deduct inventory
-      db.run("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?",
-        [item.quantity, item.productId]);
+      db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
+        item.quantity, item.productId
+      );
 
       // Log adjustment
-      db.run(
-        "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'sale', ?, ?, ?)",
-        [item.productId, item.quantity, `Sale ${receiptNumber}`, userId || null]
+      db.prepare(
+        "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'sale', ?, ?, ?)"
+      ).run(
+        item.productId, item.quantity, `Sale ${receiptNumber}`, userId || null
       );
-    }
 
-    saveDatabaseToDisk();
+      let remainingQuantityToDeduct = item.quantity;
+      
+      // Fetch batches ordered by expiry (oldest expiring first), then creation date
+      const batches = db.prepare(`
+        SELECT * FROM product_batches 
+        WHERE product_id = ? AND quantity > 0 
+        ORDER BY 
+          CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
+          created_at ASC
+      `).all(item.productId);
+      
+      let batchIndex = 0;
+      
+      while (remainingQuantityToDeduct > 0) {
+        let batchId = null;
+        let batchPurchasePrice = 0; // Fallback to 0 if no batches
+        let qtyToDeductFromBatch = remainingQuantityToDeduct;
+        
+        if (batchIndex < batches.length) {
+          const batch = batches[batchIndex];
+          batchId = batch.id;
+          batchPurchasePrice = batch.purchase_price_paise;
+          
+          if (batch.quantity >= remainingQuantityToDeduct) {
+            // This batch can fulfill the remaining amount
+            db.prepare("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?").run(remainingQuantityToDeduct, batch.id);
+            qtyToDeductFromBatch = remainingQuantityToDeduct;
+            remainingQuantityToDeduct = 0;
+          } else {
+            // This batch can only partially fulfill
+            qtyToDeductFromBatch = batch.quantity;
+            db.prepare("UPDATE product_batches SET quantity = 0 WHERE id = ?").run(batch.id);
+            remainingQuantityToDeduct -= qtyToDeductFromBatch;
+            batchIndex++;
+          }
+        } else {
+          // We ran out of batches before fulfilling the quantity!
+          // We will fallback to the product's default purchase price
+          const prod = db.prepare("SELECT purchase_price_paise FROM products WHERE id = ?").get(item.productId);
+          batchPurchasePrice = prod ? prod.purchase_price_paise : 0;
+          qtyToDeductFromBatch = remainingQuantityToDeduct;
+          remainingQuantityToDeduct = 0;
+        }
+        
+        const lineTotalPart = qtyToDeductFromBatch * item.unitPricePaise;
+        
+        db.prepare(
+          `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, unit_price_paise, purchase_price_paise, gst_percent, hsn_code, line_total_paise, batch_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          saleId, item.productId, item.productName, item.barcode, qtyToDeductFromBatch, 
+          item.unitPricePaise, batchPurchasePrice, item.gstPercent || 0, item.hsnCode || '', lineTotalPart, batchId
+        );
+      }
+    }
 
     console.log(`[TX] Sale ${receiptNumber} — ₹${(grandTotalPaise / 100).toFixed(2)}`);
 
@@ -686,32 +708,41 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, invoiceNumber, items, n
       totalPaise += item.unitCostPaise * item.quantity;
     }
 
-    db.run(
-      "INSERT INTO purchases (supplier_id, invoice_number, total_paise, notes) VALUES (?, ?, ?, ?)",
-      [supplierId, invoiceNumber || '', totalPaise, notes || '']
-    );
-
-    const purchaseId = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
+    const { lastInsertRowid: purchaseId } = db.prepare(
+      "INSERT INTO purchases (supplier_id, invoice_number, total_paise, notes) VALUES (?, ?, ?, ?)"
+    ).run(supplierId, invoiceNumber || '', totalPaise, notes || '');
 
     for (const item of items) {
       const lineTotal = item.unitCostPaise * item.quantity;
-      db.run(
-        "INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost_paise, line_total_paise) VALUES (?, ?, ?, ?, ?)",
-        [purchaseId, item.productId, item.quantity, item.unitCostPaise, lineTotal]
-      );
+      db.prepare(
+        "INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost_paise, line_total_paise) VALUES (?, ?, ?, ?, ?)"
+      ).run(purchaseId, item.productId, item.quantity, item.unitCostPaise, lineTotal);
 
       // Increase inventory
-      db.run("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?",
-        [item.quantity, item.productId]);
+      db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(
+        item.quantity, item.productId
+      );
 
       // Log adjustment
-      db.run(
-        "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'purchase', ?, ?)",
-        [item.productId, item.quantity, `Purchase Invoice: ${invoiceNumber || purchaseId}`]
+      db.prepare(
+        "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'purchase', ?, ?)"
+      ).run(
+        item.productId, item.quantity, `Purchase Invoice: ${invoiceNumber || purchaseId}`
+      );
+
+      // Create batch
+      db.prepare(
+        "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, (SELECT selling_price_paise FROM products WHERE id = ?))"
+      ).run(
+        item.productId,
+        'P-' + (invoiceNumber || purchaseId) + '-' + Date.now().toString().slice(-4),
+        '',
+        item.quantity,
+        item.unitCostPaise,
+        item.productId
       );
     }
 
-    saveDatabaseToDisk();
     return { success: true, purchaseId };
   } catch (err) {
     return { success: false, error: err.message };
@@ -815,28 +846,34 @@ ipcMain.handle('dashboard:get-stats', async () => {
 
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
 
-ipcMain.handle('reports:sales', async (_e, { startDate, endDate }) => {
+ipcMain.handle('reports:sales', async (_e, { startDate, endDate, paymentMode }) => {
   try {
-    const sales = queryAll(
-      `SELECT s.*, u.display_name as cashier_name,
+    let salesQuery = `SELECT s.*, u.display_name as cashier_name,
         (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) as item_count
        FROM sales s
        LEFT JOIN users u ON s.user_id = u.id
-       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
-       ORDER BY s.created_at DESC`,
-      [startDate, endDate]
-    );
+       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?`;
 
-    const summary = queryOne(
-      `SELECT COUNT(*) as total_sales,
+    let summaryQuery = `SELECT COUNT(*) as total_sales,
         COALESCE(SUM(subtotal_paise), 0) as total_subtotal,
         COALESCE(SUM(discount_paise), 0) as total_discount,
         COALESCE(SUM(cgst_paise), 0) as total_cgst,
         COALESCE(SUM(sgst_paise), 0) as total_sgst,
         COALESCE(SUM(grand_total_paise), 0) as total_grand
-       FROM sales WHERE date(created_at) >= ? AND date(created_at) <= ?`,
-      [startDate, endDate]
-    );
+       FROM sales WHERE date(created_at) >= ? AND date(created_at) <= ?`;
+
+    const params = [startDate, endDate];
+
+    if (paymentMode && paymentMode !== 'all') {
+      salesQuery += ` AND s.payment_mode = ?`;
+      summaryQuery += ` AND payment_mode = ?`;
+      params.push(paymentMode);
+    }
+
+    salesQuery += ` ORDER BY s.created_at DESC`;
+
+    const sales = queryAll(salesQuery, params);
+    const summary = queryOne(summaryQuery, params);
 
     return { sales, summary };
   } catch (err) {
@@ -892,7 +929,7 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
     // Get all sale items in range with their cost prices
     const items = queryAll(
       `SELECT si.quantity, si.unit_price_paise, si.line_total_paise,
-              p.purchase_price_paise
+              CASE WHEN si.purchase_price_paise > 0 THEN si.purchase_price_paise ELSE p.purchase_price_paise END as actual_cost_paise
        FROM sale_items si
        JOIN sales s ON si.sale_id = s.id
        JOIN products p ON si.product_id = p.id
@@ -905,7 +942,7 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
 
     items.forEach(item => {
       totalRevenue += item.line_total_paise;
-      totalCost += item.purchase_price_paise * item.quantity;
+      totalCost += item.actual_cost_paise * item.quantity;
     });
 
     const totalProfit = totalRevenue - totalCost;
@@ -958,11 +995,18 @@ ipcMain.handle('settings:set', async (_e, { key, value }) => {
 
 ipcMain.handle('backup:export', async () => {
   try {
-    const data = db.export();
-    const base64 = Buffer.from(data).toString('base64');
+    const backupData = await db.backup('backup.db');
+    // Read the backup file
+    const data = fs.readFileSync('backup.db');
+    const base64 = data.toString('base64');
+    
+    // Clean up temporary backup file
+    fs.unlinkSync('backup.db');
+    
     // Update last backup time
     runSql("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_backup', ?)",
       [new Date().toISOString()]);
+      
     return { success: true, data: base64, size: data.length };
   } catch (err) {
     return { success: false, error: err.message };
@@ -971,16 +1015,28 @@ ipcMain.handle('backup:export', async () => {
 
 ipcMain.handle('backup:import', async (_e, base64Data) => {
   try {
-    const SQL = await initSqlJs();
     const buffer = Buffer.from(base64Data, 'base64');
-    const newDb = new SQL.Database(buffer);
+    
+    // Close the current connection
+    db.close();
+    
+    // Replace the database file
+    fs.writeFileSync(dbPath, buffer);
+    
+    // Reopen the database
+    db = new Database(dbPath);
+    
     // Quick validity check
-    newDb.exec("SELECT COUNT(*) FROM products");
-    // Replace current db
-    db = newDb;
-    saveDatabaseToDisk();
+    db.prepare("SELECT COUNT(*) FROM products").get();
+    
     return { success: true };
   } catch (err) {
+    // If it fails, try to reopen the old one if it still exists
+    try {
+      db = new Database(dbPath);
+    } catch (e) {
+      // Best effort recovery
+    }
     return { success: false, error: 'Invalid database file: ' + err.message };
   }
 });

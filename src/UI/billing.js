@@ -267,6 +267,21 @@ const BillingModule = (() => {
       }
     });
 
+    document.getElementById('billing-cart-items').addEventListener('input', (e) => {
+      if (e.target.classList.contains('ci-price-input')) {
+        const idx = parseInt(e.target.closest('[data-index]')?.dataset.index);
+        if (isNaN(idx)) return;
+        const newPrice = parseFloat(e.target.value);
+        if (!isNaN(newPrice) && newPrice >= 0) {
+          cart[idx].unitPricePaise = Math.round(newPrice * 100);
+          updateTotals();
+          
+          const lineTotal = cart[idx].unitPricePaise * cart[idx].quantity;
+          e.target.closest('.cart-item').querySelector('.ci-total').textContent = formatRupees(lineTotal);
+        }
+      }
+    });
+
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       if (!panel.classList.contains('active')) return;
@@ -320,6 +335,10 @@ const BillingModule = (() => {
       if (existing) {
         existing.quantity++;
       } else {
+        const batches = await window.api.batches.getByProduct(product.id);
+        const activeBatches = batches.filter(b => b.quantity > 0);
+        const firstBatch = activeBatches.length > 0 ? activeBatches[0] : null;
+
         cart.push({
           productId: product.id,
           barcode: product.barcode,
@@ -328,6 +347,10 @@ const BillingModule = (() => {
           gstPercent: product.gst_percent || 0,
           quantity: 1,
           _stockQty: product.stock_quantity,
+          supplierName: product.supplier_name || 'N/A',
+          batchNumber: firstBatch ? firstBatch.batch_number : 'N/A',
+          originalCostPaise: firstBatch ? firstBatch.purchase_price_paise : (product.purchase_price_paise || 0),
+          hsnCode: product.hsn_code || '',
         });
       }
 
@@ -354,20 +377,32 @@ const BillingModule = (() => {
       cartArea.innerHTML = cart.map((item, idx) => {
         const lineTotal = item.unitPricePaise * item.quantity;
         return `
-          <div class="cart-item" data-index="${idx}">
-            <div>
-              <div class="ci-name">${item.productName}</div>
-              <div class="ci-barcode">${item.barcode}</div>
+          <div class="cart-item" data-index="${idx}" style="flex-direction: column; align-items: stretch; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="flex: 1;">
+                <div class="ci-name">${item.productName}</div>
+                <div class="ci-barcode">${item.barcode}</div>
+              </div>
+              <div class="qty-control" style="margin-right: 12px;">
+                <button class="qty-minus" title="Decrease">−</button>
+                <span class="qty-val">${item.quantity}</span>
+                <button class="qty-plus" title="Increase">+</button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px; margin-right: 12px;">
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">₹</span>
+                <input type="number" class="ci-price-input" value="${(item.unitPricePaise / 100).toFixed(2)}" step="0.01" min="0" style="width: 75px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); text-align: right; font-weight: 700; background: var(--bg-input); color: var(--text-primary); outline: none;">
+              </div>
+              <span class="ci-total" style="width: 80px; text-align: right; margin-right: 12px;">${formatRupees(lineTotal)}</span>
+              <button class="ci-remove" title="Remove">✕</button>
             </div>
-            <div class="qty-control">
-              <button class="qty-minus" title="Decrease">−</button>
-              <span class="qty-val">${item.quantity}</span>
-              <button class="qty-plus" title="Increase">+</button>
+            <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 16px; border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 2px;">
+              <span style="display: flex; align-items: center;"><i data-lucide="truck" style="width:12px;height:12px;margin-right:4px;"></i> ${item.supplierName}</span>
+              <span style="display: flex; align-items: center;"><i data-lucide="tag" style="width:12px;height:12px;margin-right:4px;"></i> Cost: ${formatRupees(item.originalCostPaise)}</span>
+              <span style="display: flex; align-items: center;"><i data-lucide="layers" style="width:12px;height:12px;margin-right:4px;"></i> Batch: ${item.batchNumber}</span>
             </div>
-            <span class="ci-total">${formatRupees(lineTotal)}</span>
-            <button class="ci-remove" title="Remove">✕</button>
           </div>`;
       }).join('');
+      if (window.lucide) window.lucide.createIcons();
     }
 
     updateTotals();
@@ -410,6 +445,7 @@ const BillingModule = (() => {
       quantity: item.quantity,
       unitPricePaise: item.unitPricePaise,
       gstPercent: item.gstPercent,
+      hsnCode: item.hsnCode,
     }));
 
     try {

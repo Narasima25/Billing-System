@@ -29,29 +29,14 @@ const SettingsModule = (() => {
       <div class="grid-2">
         <!-- Left Column -->
         <div>
-          <!-- Store Information -->
+          ${isAdmin ? `
+          <!-- User Management -->
           <div class="settings-section">
-            <h3>🏪 Store Information</h3>
-            <div class="form-group">
-              <label class="form-label">Store Name</label>
-              <input type="text" class="form-input" id="set-store-name" placeholder="Your Store Name">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Store Address</label>
-              <input type="text" class="form-input" id="set-store-address" placeholder="Full address">
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Phone</label>
-                <input type="text" class="form-input" id="set-store-phone" placeholder="+91 XXXXXXXXXX">
-              </div>
-              <div class="form-group">
-                <label class="form-label">GST Number</label>
-                <input type="text" class="form-input" id="set-store-gst" placeholder="GSTIN">
-              </div>
-            </div>
-            <button class="btn btn-primary btn-sm mt-8" id="btn-save-store-info">Save Store Info</button>
+            <h3>🔐 User Management</h3>
+            <button class="btn btn-primary btn-sm mb-16" id="btn-add-user-settings">+ Add User</button>
+            <div id="users-list-content"></div>
           </div>
+          ` : ''}
 
           <!-- Printer Settings -->
           <div class="settings-section">
@@ -95,35 +80,14 @@ const SettingsModule = (() => {
             </div>
           </div>
 
-          ${isAdmin ? `
-          <!-- User Management -->
-          <div class="settings-section">
-            <h3>🔐 User Management</h3>
-            <button class="btn btn-primary btn-sm mb-16" id="btn-add-user-settings">+ Add User</button>
-            <div id="users-list-content"></div>
-          </div>
-          ` : ''}
-
-          <!-- About -->
-          <div class="settings-section">
-            <h3>ℹ️ About</h3>
-            <div class="text-sm" style="line-height:2;">
-              <strong>Pet Store POS System</strong><br>
-              Version 1.0.0<br>
-              Built with Electron.js + SQL.js<br>
-              All data stored locally in SQLite<br>
-              Currency: Indian Rupees (₹)
-            </div>
-          </div>
         </div>
       </div>
     `;
   }
 
   function bindEvents() {
-    // Save store info
+    // Settings panel click events
     panel.addEventListener('click', (e) => {
-      if (e.target.id === 'btn-save-store-info') saveStoreInfo();
       if (e.target.id === 'btn-test-print') testPrint();
       if (e.target.id === 'toggle-dark-mode') toggleDarkMode();
       if (e.target.id === 'btn-backup-export') exportBackup();
@@ -147,10 +111,6 @@ const SettingsModule = (() => {
   async function loadSettings() {
     try {
       const settings = await window.api.settings.getAll();
-      document.getElementById('set-store-name').value = settings.store_name || '';
-      document.getElementById('set-store-address').value = settings.store_address || '';
-      document.getElementById('set-store-phone').value = settings.store_phone || '';
-      document.getElementById('set-store-gst').value = settings.store_gst || '';
       document.getElementById('set-printer-width').value = settings.printer_width || '80';
 
       const lastBackup = settings.last_backup;
@@ -163,18 +123,6 @@ const SettingsModule = (() => {
       if (toggle) toggle.classList.toggle('on', isDark);
     } catch (err) {
       console.error('[Settings] load error:', err);
-    }
-  }
-
-  async function saveStoreInfo() {
-    try {
-      await window.api.settings.set({ key: 'store_name', value: document.getElementById('set-store-name').value.trim() });
-      await window.api.settings.set({ key: 'store_address', value: document.getElementById('set-store-address').value.trim() });
-      await window.api.settings.set({ key: 'store_phone', value: document.getElementById('set-store-phone').value.trim() });
-      await window.api.settings.set({ key: 'store_gst', value: document.getElementById('set-store-gst').value.trim() });
-      showToast('Store information saved', 'success');
-    } catch (err) {
-      showToast('Failed to save settings', 'error');
     }
   }
 
@@ -204,8 +152,11 @@ const SettingsModule = (() => {
     try {
       const result = await window.api.backup.export();
       if (result.success) {
+        // Convert base64 to proper binary Blob
+        const res = await fetch(`data:application/octet-stream;base64,${result.data}`);
+        const blob = await res.blob();
+        
         // Download as file
-        const blob = new Blob([result.data], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -284,7 +235,6 @@ const SettingsModule = (() => {
     document.getElementById('modal-user-title').textContent = user ? '✏️ Edit User' : '🔐 Add User';
     document.getElementById('user-edit-id').value = user ? user.id : '';
     document.getElementById('user-username').value = user ? user.username : '';
-    document.getElementById('user-username').readOnly = !!user;
     document.getElementById('user-displayname').value = user ? user.display_name : '';
     document.getElementById('user-password').value = '';
     document.getElementById('user-password').placeholder = user ? 'Leave blank to keep current' : 'Set password';
@@ -306,7 +256,7 @@ const SettingsModule = (() => {
       let result;
       if (editId) {
         result = await window.api.auth.updateUser({
-          id: parseInt(editId), displayName, role,
+          id: parseInt(editId), username, displayName, role,
           password: password || null, isActive: true,
         });
       } else {

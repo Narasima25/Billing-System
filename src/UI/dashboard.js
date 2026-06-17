@@ -1,3 +1,4 @@
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  UI/dashboard.js — Dashboard Module
 //  Displays sales stats, alerts, expiry tracking, and recent transactions.

@@ -239,20 +239,12 @@ const ProductsModule = (() => {
     document.getElementById('prod-supplier').value = product ? (product.supplier_id || '') : '';
     document.getElementById('prod-purchase-price').value = product ? (product.purchase_price_paise / 100).toFixed(2) : '';
     document.getElementById('prod-selling-price').value = product ? (product.selling_price_paise / 100).toFixed(2) : '';
-    document.getElementById('prod-gst').value = product ? (product.gst_percent || '') : '';
+    document.getElementById('prod-gst').value = product ? (product.gst_percent || '') : '18';
     document.getElementById('prod-hsn').value = product ? (product.hsn_code || '') : '';
     document.getElementById('prod-stock').value = product ? '' : '0';
     document.getElementById('prod-stock').disabled = !!product;
     document.getElementById('prod-min-stock').value = product ? product.minimum_stock_level : '5';
     document.getElementById('prod-desc').value = product ? (product.description || '') : '';
-    if (document.getElementById('prod-batch')) {
-      document.getElementById('prod-batch').value = product && product.batchNumber ? product.batchNumber : '';
-      document.getElementById('prod-batch').disabled = false;
-    }
-    if (document.getElementById('prod-expiry')) {
-      document.getElementById('prod-expiry').value = product && product.expiryDate ? product.expiryDate : '';
-      document.getElementById('prod-expiry').disabled = false;
-    }
 
     loadDropdowns();
     openModal('modal-product');
@@ -261,6 +253,10 @@ const ProductsModule = (() => {
 
   async function saveProduct() {
     const editId = document.getElementById('product-edit-id').value;
+    const minStockVal = document.getElementById('prod-min-stock').value;
+    const stockVal = document.getElementById('prod-stock').value;
+    const gstVal = document.getElementById('prod-gst').value;
+
     const data = {
       barcode: document.getElementById('prod-barcode').value.trim(),
       productName: document.getElementById('prod-name').value.trim(),
@@ -269,13 +265,11 @@ const ProductsModule = (() => {
       supplierId: document.getElementById('prod-supplier').value || null,
       purchasePricePaise: parseRupeesToPaise(document.getElementById('prod-purchase-price').value),
       sellingPricePaise: parseRupeesToPaise(document.getElementById('prod-selling-price').value),
-      gstPercent: parseFloat(document.getElementById('prod-gst').value) || 0,
+      gstPercent: gstVal !== '' ? parseFloat(gstVal) : 0,
       hsnCode: document.getElementById('prod-hsn').value.trim(),
-      stockQuantity: parseInt(document.getElementById('prod-stock').value) || 0,
-      minimumStockLevel: parseInt(document.getElementById('prod-min-stock').value) || 5,
+      stockQuantity: stockVal !== '' ? parseInt(stockVal) : 0,
+      minimumStockLevel: minStockVal !== '' ? parseInt(minStockVal) : 5,
       description: document.getElementById('prod-desc').value.trim(),
-      batchNumber: document.getElementById('prod-batch') ? document.getElementById('prod-batch').value.trim() : '',
-      expiryDate: document.getElementById('prod-expiry') ? document.getElementById('prod-expiry').value : '',
     };
 
     if (!data.barcode) { showToast('Barcode is required', 'warning'); return; }
@@ -307,14 +301,6 @@ const ProductsModule = (() => {
     const result = await window.api.products.getAll({ search: '', page: 1, perPage: 50000 });
     const product = result.products.find(p => p.id === id);
     if (product) {
-      try {
-        const batches = await window.api.batches.getByProduct(id);
-        if (batches && batches.length > 0) {
-          const latestBatch = batches[batches.length - 1];
-          product.batchNumber = latestBatch.batch_number;
-          product.expiryDate = latestBatch.expiry_date;
-        }
-      } catch (err) {}
       openProductModal(product);
     }
   }
