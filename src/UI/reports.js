@@ -28,41 +28,30 @@ const ReportsModule = (() => {
       </div>
 
       <div class="tab-bar">
-        <button class="tab-btn active" data-tab="sales">💰 Sales</button>
+        <button class="tab-btn active" data-tab="sales">📊 GSTR-1</button>
+        <button class="tab-btn" data-tab="hsn">📝 HSN Summary</button>
+        <button class="tab-btn" data-tab="reconciliation">📊 Reconciliation</button>
         <button class="tab-btn" data-tab="inventory">📦 Inventory</button>
         <button class="tab-btn" data-tab="purchases">🛍️ Purchases</button>
         <button class="tab-btn" data-tab="profit">📈 Profit</button>
       </div>
 
-      <!-- Sales Report -->
+      <!-- GST Returns Report -->
       <div class="tab-pane active" id="rpt-tab-sales">
         <div class="report-filters">
           <div class="form-group">
             <label class="form-label">From</label>
-            <input type="date" class="form-input" id="rpt-sales-from" value="${monthStart}">
+            <input type="date" class="form-input" id="rpt-gstr1-from" value="${monthStart}">
           </div>
           <div class="form-group">
             <label class="form-label">To</label>
-            <input type="date" class="form-input" id="rpt-sales-to" value="${today}">
+            <input type="date" class="form-input" id="rpt-gstr1-to" value="${today}">
           </div>
-          <div class="form-group">
-            <label class="form-label">Payment Mode</label>
-            <select class="form-select" id="rpt-sales-payment-mode" style="width:120px;">
-              <option value="all">All</option>
-              <option value="cash">Cash</option>
-              <option value="upi">UPI</option>
-              <option value="card">Card</option>
-            </select>
-          </div>
-          <div class="btn-group" style="margin-bottom:0;">
-            <button class="btn btn-primary btn-sm" id="rpt-sales-run">Generate</button>
-            <button class="btn btn-secondary btn-sm" id="rpt-sales-today" title="Today">Today</button>
-            <button class="btn btn-secondary btn-sm" id="rpt-sales-week" title="This week">Week</button>
-            <button class="btn btn-secondary btn-sm" id="rpt-sales-month" title="This month">Month</button>
-          </div>
+          <button class="btn btn-primary btn-sm" id="rpt-gstr1-run">Generate Dashboard</button>
+          <button class="btn btn-secondary btn-sm" id="rpt-gstr1-export" disabled>📥 Export Offline CSVs</button>
         </div>
-        <div id="rpt-sales-summary" class="report-summary"></div>
-        <div id="rpt-sales-content"></div>
+        <div id="rpt-gstr1-summary" class="report-summary mt-16"></div>
+        <div id="rpt-gstr1-content"></div>
       </div>
 
       <!-- Inventory Report -->
@@ -94,6 +83,7 @@ const ReportsModule = (() => {
             <input type="date" class="form-input" id="rpt-purch-to" value="${today}">
           </div>
           <button class="btn btn-primary btn-sm" id="rpt-purch-run">Generate</button>
+          <button class="btn btn-secondary btn-sm" id="rpt-purch-export">📥 Export CSV</button>
         </div>
         <div id="rpt-purch-content"></div>
       </div>
@@ -113,6 +103,36 @@ const ReportsModule = (() => {
         </div>
         <div id="rpt-profit-content"></div>
       </div>
+
+      <!-- HSN Summary Report -->
+      <div class="tab-pane" id="rpt-tab-hsn">
+        <div class="report-filters">
+          <div class="form-group">
+            <label class="form-label">From</label>
+            <input type="date" class="form-input" id="rpt-hsn-from" value="${monthStart}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">To</label>
+            <input type="date" class="form-input" id="rpt-hsn-to" value="${today}">
+          </div>
+          <button class="btn btn-primary btn-sm" id="rpt-hsn-run">Generate</button>
+          <button class="btn btn-secondary btn-sm" id="rpt-hsn-export">📥 Export CSV</button>
+        </div>
+        <div id="rpt-hsn-content"></div>
+      </div>
+
+      <!-- Reconciliation Report -->
+      <div class="tab-pane" id="rpt-tab-reconciliation">
+        <div class="report-filters">
+          <div class="form-group">
+            <label class="form-label">Date</label>
+            <input type="date" class="form-input" id="rpt-recon-date" value="${today}">
+          </div>
+          <button class="btn btn-primary btn-sm" id="rpt-recon-run">Generate</button>
+          <button class="btn btn-secondary btn-sm" id="rpt-recon-export">📥 Export CSV</button>
+        </div>
+        <div id="rpt-recon-content"></div>
+      </div>
     `;
   }
 
@@ -123,24 +143,17 @@ const ReportsModule = (() => {
       if (tabBtn) { activeTab = tabBtn.dataset.tab; switchTab(activeTab); }
     });
 
-    // Sales report
-    document.getElementById('rpt-sales-run').addEventListener('click', runSalesReport);
-    document.getElementById('rpt-sales-today').addEventListener('click', () => {
-      document.getElementById('rpt-sales-from').value = getToday();
-      document.getElementById('rpt-sales-to').value = getToday();
-      runSalesReport();
-    });
-    document.getElementById('rpt-sales-week').addEventListener('click', () => {
-      const d = new Date(); d.setDate(d.getDate() - d.getDay());
-      document.getElementById('rpt-sales-from').value = d.toISOString().split('T')[0];
-      document.getElementById('rpt-sales-to').value = getToday();
-      runSalesReport();
-    });
-    document.getElementById('rpt-sales-month').addEventListener('click', () => {
-      document.getElementById('rpt-sales-from').value = getToday().substring(0, 8) + '01';
-      document.getElementById('rpt-sales-to').value = getToday();
-      runSalesReport();
-    });
+    // GSTR-1 report
+    document.getElementById('rpt-gstr1-run').addEventListener('click', runGstr1Report);
+    document.getElementById('rpt-gstr1-export').addEventListener('click', exportGstr1CSVs);
+
+    // HSN report
+    document.getElementById('rpt-hsn-run').addEventListener('click', runHsnReport);
+    document.getElementById('rpt-hsn-export').addEventListener('click', exportHsnCSV);
+
+    // Reconciliation report
+    document.getElementById('rpt-recon-run').addEventListener('click', runReconciliationReport);
+    document.getElementById('rpt-recon-export').addEventListener('click', exportReconciliationCSV);
 
     // Inventory report
     document.getElementById('rpt-inv-run').addEventListener('click', runInventoryReport);
@@ -148,6 +161,7 @@ const ReportsModule = (() => {
 
     // Purchase report
     document.getElementById('rpt-purch-run').addEventListener('click', runPurchaseReport);
+    document.getElementById('rpt-purch-export').addEventListener('click', exportPurchaseCSV);
 
     // Profit report
     document.getElementById('rpt-profit-run').addEventListener('click', runProfitReport);
@@ -159,51 +173,125 @@ const ReportsModule = (() => {
     document.getElementById('rpt-tab-' + tab)?.classList.add('active');
   }
 
-  // ─── Sales Report ─────────────────────────────────────────────────────
-  async function runSalesReport() {
-    const from = document.getElementById('rpt-sales-from').value;
-    const to = document.getElementById('rpt-sales-to').value;
-    const paymentMode = document.getElementById('rpt-sales-payment-mode').value;
+  // ─── GSTR-1 Report ─────────────────────────────────────────────────────
+  let lastGstrData = null;
+
+  async function runGstr1Report() {
+    const from = document.getElementById('rpt-gstr1-from').value;
+    const to = document.getElementById('rpt-gstr1-to').value;
     if (!from || !to) { showToast('Select date range', 'warning'); return; }
 
     try {
-      const { sales, summary } = await window.api.reports.sales({ startDate: from, endDate: to, paymentMode });
+      const data = await window.api.reports.gstr1({ startDate: from, endDate: to });
+      lastGstrData = data;
+      document.getElementById('rpt-gstr1-export').disabled = false;
 
-      // Summary cards
-      const summaryDiv = document.getElementById('rpt-sales-summary');
-      if (summary) {
-        summaryDiv.innerHTML = `
-          <div class="summary-card"><span class="sc-value text-teal">${summary.total_sales}</span><span class="sc-label">Total Sales</span></div>
-          <div class="summary-card"><span class="sc-value text-green">${formatRupees(summary.total_grand)}</span><span class="sc-label">Revenue</span></div>
-          <div class="summary-card"><span class="sc-value text-blue">${formatRupees(summary.total_cgst + summary.total_sgst)}</span><span class="sc-label">GST Collected</span></div>
-          <div class="summary-card"><span class="sc-value text-amber">${formatRupees(summary.total_discount)}</span><span class="sc-label">Discounts</span></div>
-        `;
-      }
+      let b2bTaxable = 0, b2bGst = 0, b2bTotal = 0;
+      data.b2b.forEach(r => {
+        b2bTaxable += r.subtotal_paise;
+        b2bGst += r.cgst_paise + r.sgst_paise + r.igst_paise;
+        b2bTotal += r.grand_total_paise;
+      });
 
-      // Table
-      const content = document.getElementById('rpt-sales-content');
-      if (sales.length === 0) {
-        content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No sales in this period</p>';
-        return;
-      }
-      content.innerHTML = `<div class="card mt-16" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table"><thead><tr>
-        <th>Receipt #</th><th>Amount</th><th>GST</th><th>Discount</th><th>Grand Total</th><th>Payment</th><th>Cashier</th><th>Date</th>
-      </tr></thead><tbody>${sales.map(s => {
-        const payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[s.payment_mode] || 'badge-teal';
-        return `<tr>
-          <td class="font-mono fw-700 text-sm">${s.receipt_number}</td>
-          <td>${formatRupees(s.subtotal_paise)}</td>
-          <td class="text-sm">${formatRupees(s.cgst_paise + s.sgst_paise)}</td>
-          <td class="text-sm">${s.discount_paise > 0 ? formatRupees(s.discount_paise) : '—'}</td>
-          <td class="fw-700 text-green">${formatRupees(s.grand_total_paise)}</td>
-          <td><span class="badge ${payBadge}">${(s.payment_mode||'cash').toUpperCase()}</span></td>
-          <td class="text-sm">${s.cashier_name || '—'}</td>
-          <td class="text-sm text-muted">${formatDate(s.created_at)}</td>
-        </tr>`;
-      }).join('')}</tbody></table></div></div>`;
+      let b2clTaxable = 0, b2clGst = 0, b2clTotal = 0;
+      data.b2cLarge.forEach(r => {
+        b2clTaxable += r.subtotal_paise;
+        b2clGst += r.igst_paise;
+        b2clTotal += r.grand_total_paise;
+      });
+
+      let b2csTaxable = 0, b2csGst = 0, b2csTotal = 0;
+      data.b2cSmall.forEach(r => {
+        b2csTaxable += r.taxable_value;
+        const gst = r.cgst + r.sgst + r.igst;
+        b2csGst += gst;
+        b2csTotal += r.taxable_value + gst;
+      });
+
+      let notesTotal = 0;
+      data.creditNotes.forEach(r => notesTotal += r.grand_total_paise);
+
+      document.getElementById('rpt-gstr1-summary').innerHTML = `
+        <div class="summary-card" style="display:flex; flex-direction:column; gap:8px;">
+          <span class="sc-label">B2B (Table 4)</span>
+          <div style="display:flex; justify-content:space-between; font-size:12px;"><span>Base:</span> <span>${formatRupees(b2bTaxable)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:12px;"><span>GST:</span> <span>${formatRupees(b2bGst)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:bold; border-top:1px solid #eee; padding-top:4px;"><span>Total:</span> <span class="text-teal">${formatRupees(b2bTotal)}</span></div>
+        </div>
+        <div class="summary-card" style="display:flex; flex-direction:column; gap:8px;">
+          <span class="sc-label">B2C Large (Table 5)</span>
+          <div style="display:flex; justify-content:space-between; font-size:12px;"><span>Base:</span> <span>${formatRupees(b2clTaxable)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:12px;"><span>GST:</span> <span>${formatRupees(b2clGst)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:bold; border-top:1px solid #eee; padding-top:4px;"><span>Total:</span> <span class="text-blue">${formatRupees(b2clTotal)}</span></div>
+        </div>
+        <div class="summary-card" style="display:flex; flex-direction:column; gap:8px;">
+          <span class="sc-label">B2C Small (Table 7)</span>
+          <div style="display:flex; justify-content:space-between; font-size:12px;"><span>Base:</span> <span>${formatRupees(b2csTaxable)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:12px;"><span>GST:</span> <span>${formatRupees(b2csGst)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:bold; border-top:1px solid #eee; padding-top:4px;"><span>Total:</span> <span class="text-green">${formatRupees(b2csTotal)}</span></div>
+        </div>
+      `;
+
+      document.getElementById('rpt-gstr1-content').innerHTML = '';
     } catch (err) {
-      console.error('[Reports] sales error:', err);
+      console.error('[Reports] gstr1 error:', err);
+      showToast('Error generating report: ' + (err.message || ''), 'error');
     }
+  }
+
+  function exportGstr1CSVs() {
+    if (!lastGstrData) return;
+    
+    // Table 4 (B2B)
+    let b2bCsv = 'GSTIN/UIN of Recipient,Receiver Name,Invoice Number,Invoice date,Invoice Value,Place Of Supply,Reverse Charge,Applicable % of Tax Rate,Invoice Type,E-Commerce GSTIN,Rate,Taxable Value,Cess Amount\n';
+    lastGstrData.b2b.forEach(r => {
+      const pos = r.customer_state_code || (r.customer_gstin ? r.customer_gstin.substring(0, 2) : '97');
+      const rate = r.subtotal_paise > 0 ? (((r.cgst_paise+r.sgst_paise+r.igst_paise) / r.subtotal_paise) * 100).toFixed(2) : 0;
+      b2bCsv += `"${r.customer_gstin}","${r.customer_name}","${r.receipt_number}","${formatDateShort(r.created_at)}",${r.grand_total_paise/100},"${pos}","N","","Regular","",${rate},${r.subtotal_paise/100},0\n`;
+    });
+    if (lastGstrData.b2b.length > 0) downloadCSV(b2bCsv, 'b2b.csv');
+
+    // Table 5 (B2C Large)
+    let b2clCsv = 'Invoice Number,Invoice date,Invoice Value,Place Of Supply,Applicable % of Tax Rate,Rate,Taxable Value,Cess Amount,E-Commerce GSTIN\n';
+    lastGstrData.b2cLarge.forEach(r => {
+      const rate = r.subtotal_paise > 0 ? ((r.igst_paise / r.subtotal_paise) * 100).toFixed(2) : 0;
+      const pos = r.customer_state_code || '97';
+      b2clCsv += `"${r.receipt_number}","${formatDateShort(r.created_at)}",${r.grand_total_paise/100},"${pos}","",${rate},${r.subtotal_paise/100},0,""\n`;
+    });
+    if (lastGstrData.b2cLarge.length > 0) downloadCSV(b2clCsv, 'b2cl.csv');
+
+    // Table 7 (B2C Small)
+    let b2csCsv = 'Type,Place Of Supply,Applicable % of Tax Rate,Rate,Taxable Value,Cess Amount,E-Commerce GSTIN\n';
+    lastGstrData.b2cSmall.forEach(r => {
+      const pos = r.place_of_supply || (r.is_inter_state ? '97' : 'local');
+      b2csCsv += `"OE","${pos}","",${r.gst_percent},${r.taxable_value/100},0,""\n`;
+    });
+    if (lastGstrData.b2cSmall.length > 0) downloadCSV(b2csCsv, 'b2cs.csv');
+
+    // Table 9B (Credit Notes)
+    let cdnrCsv = 'GSTIN/UIN of Recipient,Receiver Name,Note Number,Note Date,Note Type,Place Of Supply,Reverse Charge,Note Supply Type,Note Value,Applicable % of Tax Rate,Rate,Taxable Value,Cess Amount\n';
+    lastGstrData.creditNotes.forEach(r => {
+      if (r.is_b2b) {
+        const pos = r.customer_gstin ? r.customer_gstin.substring(0, 2) : '97';
+        const rate = r.subtotal_paise > 0 ? (((r.cgst_paise+r.sgst_paise+r.igst_paise) / r.subtotal_paise) * 100).toFixed(2) : 0;
+        cdnrCsv += `"${r.customer_gstin}","${r.customer_name}","${r.receipt_number}","${formatDateShort(r.created_at)}","C","${pos}","N","Regular",${r.grand_total_paise/100},"",${rate},${r.subtotal_paise/100},0\n`;
+      }
+    });
+    if (lastGstrData.creditNotes.filter(r => r.is_b2b).length > 0) downloadCSV(cdnrCsv, 'cdnr.csv');
+
+    // Table 13 (Docs)
+    let docsCsv = 'Nature of Document,Sr. No. From,Sr. No. To,Total Number,Cancelled,Net Issued\n';
+    const d = lastGstrData.docs;
+    if (d && d.total_count > 0) {
+      docsCsv += `"Invoices for outward supply","${d.start_num}","${d.end_num}",${d.total_count},${d.cancelled_count},${d.net_count}\n`;
+    }
+    const dr = lastGstrData.docsReturn;
+    if (dr && dr.total_count > 0) {
+      docsCsv += `"Credit Note","${dr.start_num}","${dr.end_num}",${dr.total_count},${dr.cancelled_count},${dr.net_count}\n`;
+    }
+    downloadCSV(docsCsv, 'docs.csv');
+    
+    showToast('Multiple CSV files exported', 'success');
   }
 
   // ─── Inventory Report ─────────────────────────────────────────────────
@@ -278,17 +366,31 @@ const ReportsModule = (() => {
           <div class="summary-card"><span class="sc-value text-teal">${purchases.length}</span><span class="sc-label">Purchases</span></div>
           <div class="summary-card"><span class="sc-value text-rose">${formatRupees(total)}</span><span class="sc-label">Total Cost</span></div>
         </div>
-        <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table"><thead><tr>
-          <th>Invoice #</th><th>Supplier</th><th>Total</th><th>Date</th>
+        <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table" id="rpt-purch-table"><thead><tr>
+          <th>Invoice #</th><th>Supplier</th><th>Total</th><th>GST Paid</th><th>Date</th>
         </tr></thead><tbody>${purchases.map(p => `<tr>
           <td class="fw-700 font-mono text-sm">${p.invoice_number || '—'}</td>
           <td>${p.supplier_name || '—'}</td>
           <td class="fw-700 text-rose">${formatRupees(p.total_paise)}</td>
+          <td class="text-sm">${formatRupees(p.gst_paid_paise || 0)}</td>
           <td class="text-sm text-muted">${formatDate(p.created_at)}</td>
         </tr>`).join('')}</tbody></table></div></div>`;
     } catch (err) {
       console.error('[Reports] purchase error:', err);
     }
+  }
+
+  function exportPurchaseCSV() {
+    const table = document.getElementById('rpt-purch-table');
+    if (!table) { showToast('Generate report first', 'warning'); return; }
+    let csv = 'Invoice,Supplier,Total,GST Paid,Date\n';
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 5) {
+        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
+      }
+    });
+    downloadCSV(csv, `purchases-${getToday()}.csv`);
   }
 
   // ─── Profit Report ────────────────────────────────────────────────────
@@ -317,6 +419,105 @@ const ReportsModule = (() => {
     } catch (err) {
       console.error('[Reports] profit error:', err);
     }
+  }
+
+  // ─── HSN Summary Report ────────────────────────────────────────────────
+  async function runHsnReport() {
+    const from = document.getElementById('rpt-hsn-from').value;
+    const to = document.getElementById('rpt-hsn-to').value;
+    if (!from || !to) { showToast('Select date range', 'warning'); return; }
+
+    try {
+      const summary = await window.api.reports.hsnSummary({ startDate: from, endDate: to });
+      const content = document.getElementById('rpt-hsn-content');
+      if (!summary || summary.length === 0) {
+        content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No data in this period</p>';
+        return;
+      }
+
+      content.innerHTML = `<div class="card mt-16" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table" id="rpt-hsn-table"><thead><tr>
+        <th>HSN Code</th><th>Description</th><th>Qty</th><th>Taxable Value</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total GST</th>
+      </tr></thead><tbody>${summary.map(s => `<tr>
+        <td class="font-mono fw-700 text-sm">${s.hsn_code}</td>
+        <td class="text-sm">${s.description || '—'}</td>
+        <td class="fw-700">${s.total_quantity}</td>
+        <td>${formatRupees(s.total_taxable_value)}</td>
+        <td class="text-sm">${formatRupees(s.total_cgst)}</td>
+        <td class="text-sm">${formatRupees(s.total_sgst)}</td>
+        <td class="text-sm">${formatRupees(s.total_igst)}</td>
+        <td class="fw-700 text-blue">${formatRupees(s.total_gst)}</td>
+      </tr>`).join('')}</tbody></table></div></div>`;
+    } catch (err) {
+      console.error('[Reports] HSN summary error:', err);
+    }
+  }
+
+  function exportHsnCSV() {
+    const table = document.getElementById('rpt-hsn-table');
+    if (!table) { showToast('Generate report first', 'warning'); return; }
+    let csv = 'HSN Code,Description,Qty,Taxable Value,CGST,SGST,IGST,Total GST\n';
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 8) {
+        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
+      }
+    });
+    downloadCSV(csv, `hsn-summary-${getToday()}.csv`);
+  }
+
+  // ─── Daily Reconciliation Report ────────────────────────────────────────
+  async function runReconciliationReport() {
+    const date = document.getElementById('rpt-recon-date').value;
+    if (!date) return;
+
+    try {
+      const recon = await window.api.reports.reconciliation({ date });
+      const content = document.getElementById('rpt-recon-content');
+      if (!recon || recon.length === 0) {
+        content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No transactions on this date</p>';
+        return;
+      }
+
+      let totalCount = 0;
+      let totalAmount = 0;
+
+      const rows = recon.map(r => {
+        totalCount += r.transaction_count;
+        totalAmount += r.total_amount;
+        const payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[r.payment_mode] || 'badge-teal';
+        return `<tr>
+          <td><span class="badge ${payBadge}">${(r.payment_mode||'cash').toUpperCase()}</span></td>
+          <td class="fw-700">${r.transaction_count}</td>
+          <td class="fw-700 text-green">${formatRupees(r.total_amount)}</td>
+        </tr>`;
+      }).join('');
+
+      content.innerHTML = `<div class="card mt-16" style="padding:0;"><div class="data-table-wrap"><table class="data-table" id="rpt-recon-table"><thead><tr>
+        <th>Payment Mode</th><th>Transaction Count</th><th>Total Amount</th>
+      </tr></thead><tbody>
+        ${rows}
+        <tr style="background:#f8fafc;">
+          <td class="fw-800">GRAND TOTAL</td>
+          <td class="fw-800">${totalCount}</td>
+          <td class="fw-800 text-green">${formatRupees(totalAmount)}</td>
+        </tr>
+      </tbody></table></div></div>`;
+    } catch (err) {
+      console.error('[Reports] Recon error:', err);
+    }
+  }
+
+  function exportReconciliationCSV() {
+    const table = document.getElementById('rpt-recon-table');
+    if (!table) { showToast('Generate report first', 'warning'); return; }
+    let csv = 'Payment Mode,Transaction Count,Total Amount\n';
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 3) {
+        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
+      }
+    });
+    downloadCSV(csv, `daily-reconciliation-${getToday()}.csv`);
   }
 
   function downloadCSV(csv, filename) {

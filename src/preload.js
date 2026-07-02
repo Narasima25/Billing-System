@@ -27,11 +27,14 @@ contextBridge.exposeInMainWorld('api', {
 
   // ─── Suppliers ─────────────────────────────────────────────────────
   suppliers: {
-    getAll: () => ipcRenderer.invoke('suppliers:get-all'),
+    getAll: (options) => ipcRenderer.invoke('suppliers:get-all', options),
     add: (data) => ipcRenderer.invoke('suppliers:add', data),
     update: (data) => ipcRenderer.invoke('suppliers:update', data),
     delete: (id) => ipcRenderer.invoke('suppliers:delete', id),
+    hardDelete: (id) => ipcRenderer.invoke('suppliers:hard-delete', id),
+    restore: (id) => ipcRenderer.invoke('suppliers:restore', id),
     getPurchases: (id) => ipcRenderer.invoke('suppliers:get-purchases', id),
+    getLedger: () => ipcRenderer.invoke('suppliers:get-ledger'),
   },
 
   // ─── Products ────────────────────────────────────────────────────────
@@ -66,12 +69,23 @@ contextBridge.exposeInMainWorld('api', {
     getSale: (id) => ipcRenderer.invoke('billing:get-sale', id),
     getRecentSales: (limit) => ipcRenderer.invoke('billing:get-recent-sales', limit),
     getLastSale: () => ipcRenderer.invoke('billing:get-last-sale'),
+    processReturn: (data) => ipcRenderer.invoke('billing:process-return', data),
+    getCustomer: (phone) => ipcRenderer.invoke('billing:get-customer', phone),
+  },
+
+  // ─── Customers ───────────────────────────────────────────────────────
+  customers: {
+    getAll: () => ipcRenderer.invoke('customers:get-all'),
+    getHistory: (phone) => ipcRenderer.invoke('customers:get-history', phone),
+    sendUpdate: (data) => ipcRenderer.invoke('customers:send-update', data),
+    sendBulkUpdate: (data) => ipcRenderer.invoke('customers:send-bulk-update', data),
   },
 
   // ─── Purchases ───────────────────────────────────────────────────────
   purchases: {
     add: (data) => ipcRenderer.invoke('purchases:add', data),
     getAll: (params) => ipcRenderer.invoke('purchases:get-all', params),
+    getDetails: (id) => ipcRenderer.invoke('purchases:get-details', id),
   },
 
   // ─── Dashboard ───────────────────────────────────────────────────────
@@ -85,6 +99,9 @@ contextBridge.exposeInMainWorld('api', {
     inventory: (params) => ipcRenderer.invoke('reports:inventory', params),
     purchases: (params) => ipcRenderer.invoke('reports:purchases', params),
     profit: (params) => ipcRenderer.invoke('reports:profit', params),
+    hsnSummary: (params) => ipcRenderer.invoke('reports:hsn-summary', params),
+    reconciliation: (params) => ipcRenderer.invoke('reports:reconciliation', params),
+    gstr1: (params) => ipcRenderer.invoke('reports:gstr1', params),
   },
 
   // ─── Settings ────────────────────────────────────────────────────────
@@ -98,5 +115,10 @@ contextBridge.exposeInMainWorld('api', {
   backup: {
     export: () => ipcRenderer.invoke('backup:export'),
     import: (data) => ipcRenderer.invoke('backup:import', data),
+  },
+
+  // ─── Dialog / File Picker ───────────────────────────────────────────
+  dialog: {
+    openFile: (options) => ipcRenderer.invoke('dialog:open-file', options),
   },
 });

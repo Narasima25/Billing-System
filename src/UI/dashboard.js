@@ -124,10 +124,10 @@ const DashboardModule = (() => {
         alertsHtml += `<div class="alert-card warning"><span class="alert-icon"><i data-lucide="alert-triangle"></i></span><span class="alert-text"><strong>${stats.lowStockCount}</strong> products are below minimum stock level</span></div>`;
       }
       if (stats.expired && stats.expired.length > 0) {
-        alertsHtml += `<div class="alert-card danger"><span class="alert-icon"><i data-lucide="alert-circle"></i></span><span class="alert-text"><strong>${stats.expired.length}</strong> product batches have expired</span></div>`;
+        alertsHtml += `<div class="alert-card danger"><span class="alert-icon"><i data-lucide="alert-circle"></i></span><span class="alert-text"><strong>${stats.expired.length}</strong> expiry items have expired</span></div>`;
       }
       if (stats.expiring30 && stats.expiring30.length > 0) {
-        alertsHtml += `<div class="alert-card warning"><span class="alert-icon"><i data-lucide="clock"></i></span><span class="alert-text"><strong>${stats.expiring30.length}</strong> product batches expiring within 30 days</span></div>`;
+        alertsHtml += `<div class="alert-card warning"><span class="alert-icon"><i data-lucide="clock"></i></span><span class="alert-text"><strong>${stats.expiring30.length}</strong> expiry items expiring within 30 days</span></div>`;
       }
 
       alertsDiv.innerHTML = alertsHtml;

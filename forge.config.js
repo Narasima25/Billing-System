@@ -4,12 +4,19 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: true,
+    name: 'PetStorePOS',
+    icon: 'src/logo' // Electron Forge automatically adds .ico extension
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        name: 'petstore_pos',
+        authors: 'PetStore',
+        description: 'Professional Pet Store Point of Sale System',
+        setupIcon: 'src/logo.ico'
+      },
     },
     {
       name: '@electron-forge/maker-zip',

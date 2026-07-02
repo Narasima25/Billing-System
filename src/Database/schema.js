@@ -19,6 +19,9 @@ function hashPassword(password) {
  */
 function initializeSchema(db) {
   db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA synchronous = NORMAL;');
+  db.exec('PRAGMA cache_size = -64000;');
+  db.exec('PRAGMA temp_store = MEMORY;');
   db.exec('PRAGMA foreign_keys = ON;');
 
   // ─── 1. Users Table ──────────────────────────────────────────────────
@@ -89,6 +92,7 @@ function initializeSchema(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active);`);
 
   // ─── 5. Product Batches Table ────────────────────────────────────────
   db.exec(`
@@ -117,12 +121,22 @@ function initializeSchema(db) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       receipt_number TEXT UNIQUE NOT NULL,
       user_id INTEGER,
+      customer_name TEXT DEFAULT '',
+      customer_state_code TEXT DEFAULT '',
+      customer_address TEXT DEFAULT '',
+      customer_phone TEXT DEFAULT '',
+      customer_gstin TEXT DEFAULT '',
+      is_b2b INTEGER DEFAULT 0,
       subtotal_paise INTEGER DEFAULT 0,
       discount_paise INTEGER DEFAULT 0,
       cgst_paise INTEGER DEFAULT 0,
       sgst_paise INTEGER DEFAULT 0,
+      igst_paise INTEGER DEFAULT 0,
+      is_inter_state INTEGER DEFAULT 0,
       grand_total_paise INTEGER DEFAULT 0,
       payment_mode TEXT DEFAULT 'cash' CHECK(payment_mode IN ('cash','upi','card')),
+      is_return INTEGER DEFAULT 0,
+      original_receipt_number TEXT DEFAULT '',
       notes TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (user_id) REFERENCES users(id)
@@ -131,6 +145,7 @@ function initializeSchema(db) {
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sales_receipt ON sales(receipt_number);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(created_at);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sales_payment_mode ON sales(payment_mode);`);
 
   // ─── 8. Sale Items Table ─────────────────────────────────────────────
   db.exec(`
@@ -141,8 +156,10 @@ function initializeSchema(db) {
       product_name TEXT NOT NULL,
       barcode TEXT NOT NULL,
       quantity INTEGER NOT NULL,
+      free_quantity INTEGER DEFAULT 0,
       unit_price_paise INTEGER NOT NULL,
       purchase_price_paise INTEGER DEFAULT 0,
+      discount_paise INTEGER DEFAULT 0,
       gst_percent REAL DEFAULT 0,
       hsn_code TEXT DEFAULT '',
       line_total_paise INTEGER NOT NULL,
@@ -153,6 +170,7 @@ function initializeSchema(db) {
   `);
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items(sale_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sale_items_product ON sale_items(product_id);`);
 
   // ─── 9. Purchases Table ──────────────────────────────────────────────
   db.exec(`
@@ -161,6 +179,7 @@ function initializeSchema(db) {
       supplier_id INTEGER NOT NULL,
       invoice_number TEXT DEFAULT '',
       total_paise INTEGER DEFAULT 0,
+      gst_paid_paise INTEGER DEFAULT 0,
       notes TEXT DEFAULT '',
       purchase_date TEXT DEFAULT (datetime('now','localtime')),
       created_at TEXT DEFAULT (datetime('now','localtime')),
@@ -175,6 +194,7 @@ function initializeSchema(db) {
       purchase_id INTEGER NOT NULL,
       product_id INTEGER NOT NULL,
       quantity INTEGER NOT NULL,
+      free_quantity INTEGER DEFAULT 0,
       unit_cost_paise INTEGER NOT NULL,
       line_total_paise INTEGER NOT NULL,
       FOREIGN KEY (purchase_id) REFERENCES purchases(id),
@@ -207,6 +227,19 @@ function initializeSchema(db) {
     );
   `);
 
+  // ─── 13. Customers Table (Loyalty Program) ───────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone_number TEXT UNIQUE NOT NULL,
+      name TEXT DEFAULT '',
+      coupon_balance_paise INTEGER DEFAULT 0,
+      total_lifetime_spent_paise INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+  `);
+
   // ─── Migrations for existing DBs ─────────────────────────────────────
   try {
     db.exec(`ALTER TABLE product_batches ADD COLUMN purchase_price_paise INTEGER DEFAULT 0;`);
@@ -227,6 +260,145 @@ function initializeSchema(db) {
   try {
     db.exec(`ALTER TABLE sale_items ADD COLUMN hsn_code TEXT DEFAULT '';`);
   } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN is_inter_state INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN free_quantity INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN customer_name TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN customer_state_code TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN customer_gstin TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN is_b2b INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN is_return INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN original_receipt_number TEXT;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN cgst_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN sgst_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN igst_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE purchases ADD COLUMN supplier_gstin TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE purchases ADD COLUMN gst_paid_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN cgst_percent REAL DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN sgst_percent REAL DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  // ─── Phase 2: Supplier & Purchase Redesign Migrations ───────────────
+  try {
+    db.exec(`ALTER TABLE suppliers ADD COLUMN opening_balance_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE suppliers ADD COLUMN state TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+  
+  try {
+    db.exec(`ALTER TABLE purchases ADD COLUMN status TEXT DEFAULT 'Paid';`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE purchases ADD COLUMN amount_paid_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE purchases ADD COLUMN due_date TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE purchases ADD COLUMN attachment_path TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sale_items ADD COLUMN discount_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE sale_items ADD COLUMN free_quantity INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  
+  // ─── Phase 3: Product Scheme Discount Migrations ─────────────────────
+  try {
+    db.exec(`ALTER TABLE products ADD COLUMN base_price_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE products ADD COLUMN scheme_discount_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN base_cost_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN scheme_discount_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  // ─── Phase 4: Customer Loyalty Migrations ────────────────────────────
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN customer_phone TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN applied_coupon_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN reward_earned_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN phone_number TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN name TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN coupon_balance_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN total_lifetime_spent_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN created_at TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN updated_at TEXT DEFAULT '';`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN customer_address TEXT DEFAULT '';`);
+  } catch (err) {}
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_active ON suppliers(is_active);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);`);
 
   // ─── Seed: Default Admin User ────────────────────────────────────────
   const adminCheck = db.prepare("SELECT COUNT(*) as cnt FROM users WHERE username = 'admin'").get();
@@ -260,14 +432,16 @@ function initializeSchema(db) {
 
   // ─── Seed: Default Settings ──────────────────────────────────────────
   const defaultSettings = {
-    'store_name': 'PET STORE',
+    'store_name': 'SKY PET SHOP',
     'store_address': '',
     'store_phone': '',
     'store_gst': '',
+    'shop_gstin': '',
+    'shop_state_code': '',
     'printer_width': '80',
     'theme': 'light',
     'last_backup': '',
-    'receipt_counter': '0',
+    'receipt_counter': '199',
   };
 
   const settingStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
@@ -278,6 +452,7 @@ function initializeSchema(db) {
 
 /**
  * Generate the next sequential receipt number: PET-YYYY-NNNNNN
+ * Note: Must be called within a database transaction if you want to avoid gaps!
  * @param {object} db - better-sqlite3 Database instance
  * @returns {string} Receipt number
  */

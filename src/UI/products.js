@@ -29,8 +29,8 @@ const ProductsModule = (() => {
           <p class="text-muted text-sm">Manage your product catalog</p>
         </div>
         <div class="btn-group">
-          <button class="btn btn-secondary" id="btn-manage-categories">📁 Categories</button>
           <button class="btn btn-primary" id="btn-add-product">+ Add Product</button>
+          <button class="btn btn-secondary" id="btn-manage-categories">📁 Categories</button>
         </div>
       </div>
 
@@ -51,6 +51,7 @@ const ProductsModule = (() => {
                 <th>Product</th>
                 <th>Barcode</th>
                 <th>Category</th>
+                <th>HSN</th>
                 <th>Purchase ₹</th>
                 <th>Selling ₹</th>
                 <th>GST%</th>
@@ -82,11 +83,6 @@ const ProductsModule = (() => {
   }
 
   function bindEvents() {
-    // Add product
-    document.getElementById('btn-add-product').addEventListener('click', () => {
-      openProductModal();
-    });
-
     // Search
     let searchTimer;
     document.getElementById('products-search').addEventListener('input', (e) => {
@@ -115,6 +111,11 @@ const ProductsModule = (() => {
       loadCategoriesList();
     });
 
+    // Add product
+    document.getElementById('btn-add-product').addEventListener('click', () => {
+      openProductModal();
+    });
+
     // Save category
     document.getElementById('btn-save-category').addEventListener('click', saveCategory);
     document.getElementById('form-category').addEventListener('submit', (e) => { e.preventDefault(); saveCategory(); });
@@ -140,6 +141,16 @@ const ProductsModule = (() => {
       currentPage = parseInt(btn.dataset.page);
       loadProducts();
     });
+
+    // Auto-calculate Final Purchase Price
+    const calcFinalPrice = () => {
+      const base = parseFloat(document.getElementById('prod-base-price').value) || 0;
+      const disc = parseFloat(document.getElementById('prod-scheme-disc').value) || 0;
+      const finalPrice = Math.max(0, base - disc);
+      document.getElementById('prod-purchase-price').value = finalPrice.toFixed(2);
+    };
+    document.getElementById('prod-base-price').addEventListener('input', calcFinalPrice);
+    document.getElementById('prod-scheme-disc').addEventListener('input', calcFinalPrice);
   }
 
   async function loadDropdowns() {
@@ -188,6 +199,7 @@ const ProductsModule = (() => {
           </td>
           <td><span class="font-mono text-sm">${p.barcode}</span></td>
           <td>${p.category_name ? `<span class="badge badge-teal">${p.category_name}</span>` : '<span class="text-muted">—</span>'}</td>
+          <td><span class="font-mono text-sm">${p.hsn_code || '—'}</span></td>
           <td>${formatRupees(p.purchase_price_paise)}</td>
           <td class="fw-700">${formatRupees(p.selling_price_paise)}</td>
           <td>${p.gst_percent || 0}%</td>
@@ -237,6 +249,8 @@ const ProductsModule = (() => {
     document.getElementById('prod-category').value = product ? (product.category_id || '') : '';
     document.getElementById('prod-brand').value = product ? (product.brand || '') : '';
     document.getElementById('prod-supplier').value = product ? (product.supplier_id || '') : '';
+    document.getElementById('prod-base-price').value = product ? (product.base_price_paise / 100).toFixed(2) : '';
+    document.getElementById('prod-scheme-disc').value = product ? (product.scheme_discount_paise / 100).toFixed(2) : '';
     document.getElementById('prod-purchase-price').value = product ? (product.purchase_price_paise / 100).toFixed(2) : '';
     document.getElementById('prod-selling-price').value = product ? (product.selling_price_paise / 100).toFixed(2) : '';
     document.getElementById('prod-gst').value = product ? (product.gst_percent || '') : '18';
@@ -263,6 +277,8 @@ const ProductsModule = (() => {
       categoryId: document.getElementById('prod-category').value || null,
       brand: document.getElementById('prod-brand').value.trim(),
       supplierId: document.getElementById('prod-supplier').value || null,
+      basePricePaise: parseRupeesToPaise(document.getElementById('prod-base-price').value),
+      schemeDiscountPaise: parseRupeesToPaise(document.getElementById('prod-scheme-disc').value),
       purchasePricePaise: parseRupeesToPaise(document.getElementById('prod-purchase-price').value),
       sellingPricePaise: parseRupeesToPaise(document.getElementById('prod-selling-price').value),
       gstPercent: gstVal !== '' ? parseFloat(gstVal) : 0,

@@ -66,6 +66,76 @@ const SettingsModule = (() => {
 
         <!-- Right Column -->
         <div>
+          <!-- Store Configuration -->
+          <div class="settings-section">
+            <h3>🏬 Store Configuration</h3>
+            <p class="text-sm text-muted mb-16">Configure your shop's details, GST, and UPI.</p>
+            <div class="form-group">
+              <label class="form-label">Store Name</label>
+              <input type="text" class="form-input" id="set-store-name" placeholder="e.g. SKY PET SHOP">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Store Address</label>
+              <input type="text" class="form-input" id="set-store-address" placeholder="Store address...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Store Phone</label>
+              <input type="text" class="form-input" id="set-store-phone" placeholder="Phone number...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Shop GSTIN</label>
+              <input type="text" class="form-input" id="set-shop-gstin" placeholder="15-digit GSTIN" maxlength="15">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Store UPI ID</label>
+              <input type="text" class="form-input" id="set-shop-upi-id" placeholder="e.g. storename@upi" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Shop State Code *</label>
+              <select class="form-select" id="set-shop-state-code">
+                <option value="">-- Select State --</option>
+                <option value="01">01 - Jammu & Kashmir</option>
+                <option value="02">02 - Himachal Pradesh</option>
+                <option value="03">03 - Punjab</option>
+                <option value="04">04 - Chandigarh</option>
+                <option value="05">05 - Uttarakhand</option>
+                <option value="06">06 - Haryana</option>
+                <option value="07">07 - Delhi</option>
+                <option value="08">08 - Rajasthan</option>
+                <option value="09">09 - Uttar Pradesh</option>
+                <option value="10">10 - Bihar</option>
+                <option value="11">11 - Sikkim</option>
+                <option value="12">12 - Arunachal Pradesh</option>
+                <option value="13">13 - Nagaland</option>
+                <option value="14">14 - Manipur</option>
+                <option value="15">15 - Mizoram</option>
+                <option value="16">16 - Tripura</option>
+                <option value="17">17 - Meghalaya</option>
+                <option value="18">18 - Assam</option>
+                <option value="19">19 - West Bengal</option>
+                <option value="20">20 - Jharkhand</option>
+                <option value="21">21 - Odisha</option>
+                <option value="22">22 - Chhattisgarh</option>
+                <option value="23">23 - Madhya Pradesh</option>
+                <option value="24">24 - Gujarat</option>
+                <option value="26">26 - Dadra & Nagar Haveli and Daman & Diu</option>
+                <option value="27">27 - Maharashtra</option>
+                <option value="29">29 - Karnataka</option>
+                <option value="30">30 - Goa</option>
+                <option value="31">31 - Lakshadweep</option>
+                <option value="32">32 - Kerala</option>
+                <option value="33">33 - Tamil Nadu</option>
+                <option value="34">34 - Puducherry</option>
+                <option value="35">35 - Andaman & Nicobar Islands</option>
+                <option value="36">36 - Telangana</option>
+                <option value="37">37 - Andhra Pradesh</option>
+                <option value="38">38 - Ladakh</option>
+                <option value="97">97 - Other Territory</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-save-store-config">✔ Save Store Config</button>
+          </div>
+
           <!-- Cloud Backup -->
           <div class="settings-section">
             <h3>☁️ Cloud Backup</h3>
@@ -93,6 +163,7 @@ const SettingsModule = (() => {
       if (e.target.id === 'btn-backup-export') exportBackup();
       if (e.target.id === 'btn-backup-import') importBackup();
       if (e.target.id === 'btn-add-user-settings') openUserModal();
+      if (e.target.id === 'btn-save-store-config') saveStoreConfig();
     });
 
     // Printer width change
@@ -121,6 +192,14 @@ const SettingsModule = (() => {
       document.body.classList.toggle('dark', isDark);
       const toggle = document.getElementById('toggle-dark-mode');
       if (toggle) toggle.classList.toggle('on', isDark);
+
+      // Store & GST Config
+      document.getElementById('set-store-name').value = settings.store_name || '';
+      document.getElementById('set-store-address').value = settings.store_address || '';
+      document.getElementById('set-store-phone').value = settings.store_phone || '';
+      document.getElementById('set-shop-gstin').value = settings.shop_gstin || '';
+      document.getElementById('set-shop-upi-id').value = settings.shop_upi_id || '';
+      document.getElementById('set-shop-state-code').value = settings.shop_state_code || '';
     } catch (err) {
       console.error('[Settings] load error:', err);
     }
@@ -135,14 +214,39 @@ const SettingsModule = (() => {
     showToast(isDark ? 'Dark mode enabled' : 'Light mode enabled', 'info');
   }
 
+  async function saveStoreConfig() {
+    const storeName = document.getElementById('set-store-name').value.trim();
+    const storeAddress = document.getElementById('set-store-address').value.trim();
+    const storePhone = document.getElementById('set-store-phone').value.trim();
+    const gstin = document.getElementById('set-shop-gstin').value.trim();
+    const stateCode = document.getElementById('set-shop-state-code').value;
+    const upiId = document.getElementById('set-shop-upi-id').value.trim();
+
+    if (!stateCode) {
+      showToast('Please select a State Code', 'warning');
+      return;
+    }
+
+    try {
+      await window.api.settings.set({ key: 'store_name', value: storeName });
+      await window.api.settings.set({ key: 'store_address', value: storeAddress });
+      await window.api.settings.set({ key: 'store_phone', value: storePhone });
+      await window.api.settings.set({ key: 'shop_gstin', value: gstin });
+      await window.api.settings.set({ key: 'shop_state_code', value: stateCode });
+      await window.api.settings.set({ key: 'shop_upi_id', value: upiId });
+      showToast('Store Configuration saved', 'success');
+    } catch (err) {
+      showToast('Failed to save Store config', 'error');
+    }
+  }
+
   function testPrint() {
     const container = document.getElementById('receipt-container');
     container.innerHTML = `
       <div class="r-center r-bold" style="font-size:16px;">PRINTER TEST</div>
       <div class="r-line"></div>
       <div class="r-center">If you can read this, your thermal printer is configured correctly.</div>
-      <div class="r-line"></div>
-      <div class="r-center">🐾 Pet Store POS 🐾</div>
+      <div class="r-center">🐾 SKY PET SHOP 🐾</div>
     `;
     window.print();
     showToast('Test print sent', 'info');

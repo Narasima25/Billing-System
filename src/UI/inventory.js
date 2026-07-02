@@ -6,7 +6,7 @@
 const InventoryModule = (() => {
   const panel = document.getElementById('panel-inventory');
   let initialized = false;
-  let activeTab = 'stockin';
+  let activeTab = 'adjustments';
 
   function init() {
     if (!initialized) {
@@ -21,80 +21,24 @@ const InventoryModule = (() => {
     panel.innerHTML = `
       <div class="section-header">
         <h2>📦 Inventory Management</h2>
-        <p>Stock In, Adjustments, Audit, and Batch Tracking</p>
+        <p>Adjustments, Audit, and Expiry Tracking</p>
       </div>
 
       <div class="tab-bar">
-        <button class="tab-btn active" data-tab="stockin">📥 Stock In</button>
-        <button class="tab-btn" data-tab="adjustments">📊 Adjustments</button>
+        <button class="tab-btn active" data-tab="adjustments">📊 Adjustments</button>
         <button class="tab-btn" data-tab="audit">🔍 Audit</button>
-        <button class="tab-btn" data-tab="batches">📋 Batches</button>
+        <button class="tab-btn" data-tab="batches">📋 Expiry Items</button>
       </div>
 
-      <!-- Stock In -->
-      <div class="tab-pane active" id="inv-tab-stockin">
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-header">
-              <div class="card-icon teal">📥</div>
-              <div><h3>Scan Barcode</h3><p>Scan product barcode and enter quantity</p></div>
-            </div>
-            <div class="scanner-input-wrap mb-12">
-              <span class="scan-icon">⎸</span>
-              <input type="text" class="scanner-input" id="inv-scanner" placeholder="Scan barcode..." autocomplete="off">
-            </div>
-            
-            <div class="customer-search-wrap" style="margin: 0 0 12px 0;">
-              <input type="text" id="inv-manual-search" placeholder="Or search product by name..." autocomplete="off" style="padding: 10px 14px; font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); width: 100%; background: var(--bg-input); color: var(--text-primary); outline: none;">
-              <div class="customer-results" id="inv-manual-results" style="max-height: 250px; overflow-y: auto;"></div>
-            </div>
-            <div class="scanner-status"><span class="scanner-dot"></span> Ready for stock intake</div>
-            <div id="inv-scan-result" class="mt-12"></div>
-            <div id="inv-stockin-form" class="hidden mt-16">
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Product</label>
-                  <input type="text" class="form-input" id="inv-product-name" readonly>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Current Stock</label>
-                  <input type="text" class="form-input" id="inv-current-stock" readonly>
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Quantity to Add *</label>
-                <input type="number" class="form-input" id="inv-add-qty" min="1" placeholder="Enter quantity">
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Batch No. (Optional)</label>
-                  <input type="text" class="form-input" id="inv-batch-no" placeholder="e.g. B123">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Expiry Date (Optional)</label>
-                  <input type="date" class="form-input" id="inv-expiry-date">
-                </div>
-              </div>
-              <button class="btn btn-primary mt-12" id="inv-save-stockin">Save Stock In</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-header">
-              <div class="card-icon green">📋</div>
-              <div><h3>Session Log</h3><p>Items received this session</p></div>
-            </div>
-            <div id="inv-session-log">
-              <div class="empty-state"><span class="empty-icon">📭</span><p>No items scanned yet</p></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+      <!-- Stock In (Removed) -->
       <!-- Adjustments History -->
-      <div class="tab-pane" id="inv-tab-adjustments">
+      <div class="tab-pane active" id="inv-tab-adjustments">
+        <div class="page-toolbar">
+          <p class="text-muted text-sm">View and manage stock adjustments</p>
+          <button class="btn btn-primary" id="btn-new-adjustment"><i data-lucide="plus"></i> New Adjustment</button>
+        </div>
         <div class="card" style="padding:0;">
-          <div class="data-table-wrap" style="max-height:calc(100vh - 260px);">
+          <div class="data-table-wrap" style="max-height:calc(100vh - 310px);">
             <table class="data-table">
               <thead>
                 <tr>
@@ -140,14 +84,14 @@ const InventoryModule = (() => {
         </div>
       </div>
 
-      <!-- Batches -->
+      <!-- Expiry Items -->
       <div class="tab-pane" id="inv-tab-batches">
         <div class="page-toolbar">
-          <p class="text-muted text-sm">Track product batches with expiry dates</p>
+          <p class="text-muted text-sm">Track expiry items and their dates</p>
           <button class="btn btn-secondary" id="btn-view-expiring">⚠️ View Expiring</button>
         </div>
         <div id="batches-content">
-          <div class="empty-state"><span class="empty-icon">📋</span><p>Loading batches...</p></div>
+          <div class="empty-state"><span class="empty-icon">📋</span><p>Loading expiry items...</p></div>
         </div>
       </div>
     `;
@@ -163,122 +107,51 @@ const InventoryModule = (() => {
       }
     });
 
-    // Global Scanner Buffer (Optimized for Mobile/3rd Party Scanner Apps)
-    let scanBuffer = '';
-    let scanTimer = null;
+    document.getElementById('btn-new-adjustment').addEventListener('click', () => {
+      document.getElementById('adjust-product-id').value = '';
+      document.getElementById('adjust-product-name').value = '';
+      const searchInput = document.getElementById('adjust-product-search');
+      if (searchInput) searchInput.value = '';
+      document.getElementById('adjust-type').value = 'add';
+      document.getElementById('adjust-qty').value = '';
+      document.getElementById('adjust-reason').value = '';
+      openModal('modal-stock-adjust');
+    });
 
-    document.addEventListener('keydown', async (e) => {
-      if (!panel.classList.contains('active') || activeTab !== 'stockin' || document.querySelector('.modal-overlay.visible')) return;
-
-      const scanner = document.getElementById('inv-scanner');
-      
-      // If user is actively typing in another input (like quantity or manual search), don't intercept
-      if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement !== scanner) {
-        scanBuffer = '';
+    document.getElementById('btn-adjust-lookup').addEventListener('click', async () => {
+      const searchStr = document.getElementById('adjust-product-search').value.trim();
+      if (!searchStr) {
+        showToast('Please enter a barcode', 'warning');
         return;
       }
-
-      if (e.key === 'Enter') {
-        let barcode = scanBuffer;
-        scanBuffer = '';
-
-        const scanner = document.getElementById('inv-scanner');
-        // Fallback: If buffer dropped characters but input is focused, grab from input
-        if ((!barcode || barcode.length < 3) && scanner && document.activeElement === scanner) {
-          barcode = scanner.value.trim();
+      try {
+        const p = await window.api.products.lookupBarcode(searchStr);
+        if (p) {
+          document.getElementById('adjust-product-id').value = p.id;
+          document.getElementById('adjust-product-name').value = p.product_name;
+          showToast('Product found', 'success');
+        } else {
+          showToast('Product not found', 'warning');
+          document.getElementById('adjust-product-id').value = '';
+          document.getElementById('adjust-product-name').value = '';
         }
-
-        if (barcode && barcode.length >= 3) {
-          e.preventDefault();
-          if (scanner) scanner.value = '';
-          await handleStockInScan(barcode);
-        }
-        return;
-      }
-
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        scanBuffer += e.key;
-        clearTimeout(scanTimer);
-        // Increased tolerance to 300ms for mobile scanner apps that type slower
-        scanTimer = setTimeout(() => { scanBuffer = ''; }, 300);
+      } catch (err) {
+        showToast('Error looking up product', 'error');
       }
     });
 
-    // Save stock in
-    document.getElementById('inv-save-stockin').addEventListener('click', saveStockIn);
-    document.getElementById('inv-add-qty').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') saveStockIn();
+    document.getElementById('adjust-product-search').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('btn-adjust-lookup').click();
+      }
     });
 
     // Audit export
     document.getElementById('btn-export-audit').addEventListener('click', exportAuditCSV);
 
-    // Batches
+    // Expiry Items
     document.getElementById('btn-view-expiring').addEventListener('click', () => loadBatches(true));
-
-    // Manual Product Search (By Name) for Stock In
-    const invManualSearch = document.getElementById('inv-manual-search');
-    let invManualTimer = null;
-    if (invManualSearch) {
-      invManualSearch.addEventListener('input', () => {
-        clearTimeout(invManualTimer);
-        invManualTimer = setTimeout(async () => {
-          const q = invManualSearch.value.trim();
-          const resultsDiv = document.getElementById('inv-manual-results');
-          if (q.length < 2) {
-            resultsDiv.classList.remove('show');
-            return;
-          }
-          const data = await window.api.products.getAll({ search: q, perPage: 15 });
-          const products = data.products.filter(p => p.is_active === 1);
-          
-          if (products.length === 0) {
-            resultsDiv.innerHTML = `<div class="customer-result-item text-muted">No products found</div>`;
-          } else {
-            resultsDiv.innerHTML = products.map(p => {
-              return `<div class="customer-result-item" data-barcode="${p.barcode}" style="display:flex; justify-content:space-between; align-items:center;">
-                 <div>
-                   <strong>${p.product_name}</strong> <span class="text-xs text-muted" style="margin-left:4px;">${p.barcode}</span>
-                   <div class="text-sm text-muted" style="margin-top:2px;">Stock: ${p.stock_quantity}</div>
-                 </div>
-               </div>`;
-            }).join('');
-          }
-          resultsDiv.classList.add('show');
-        }, 300);
-      });
-
-      document.getElementById('inv-manual-results').addEventListener('click', async (e) => {
-        const item = e.target.closest('.customer-result-item');
-        if (!item || !item.dataset.barcode) return;
-        
-        document.getElementById('inv-manual-results').classList.remove('show');
-        invManualSearch.value = '';
-        
-        await handleStockInScan(item.dataset.barcode);
-      });
-
-      // Close manual results on click outside
-      document.addEventListener('click', (e) => {
-        if (!e.target.closest('#inv-manual-search') && !e.target.closest('#inv-manual-results')) {
-          const mr = document.getElementById('inv-manual-results');
-          if (mr) mr.classList.remove('show');
-        }
-      });
-    }
-
-    // Focus scanner periodically if not typing elsewhere
-    setInterval(() => {
-      if (panel.classList.contains('active') && activeTab === 'stockin') {
-        const scanner = document.getElementById('inv-scanner');
-        if (scanner && 
-            document.activeElement.tagName !== 'INPUT' &&
-            document.activeElement.tagName !== 'SELECT' &&
-            document.activeElement.tagName !== 'TEXTAREA') {
-          scanner.focus();
-        }
-      }
-    }, 3000);
   }
 
   function switchTab(tab) {
@@ -290,91 +163,6 @@ const InventoryModule = (() => {
     if (tab === 'adjustments') loadAdjustments();
     if (tab === 'audit') loadAuditData();
     if (tab === 'batches') loadBatches(false);
-    if (tab === 'stockin') {
-      setTimeout(() => document.getElementById('inv-scanner')?.focus(), 100);
-    }
-  }
-
-  let scannedProduct = null;
-  let sessionLog = [];
-
-  async function handleStockInScan(barcode) {
-    const resultDiv = document.getElementById('inv-scan-result');
-    try {
-      const product = await window.api.products.lookupBarcode(barcode);
-      if (!product) {
-        resultDiv.innerHTML = `<div class="alert-card danger"><span class="alert-icon">❌</span><span class="alert-text">Barcode "${barcode}" not found</span></div>`;
-        scannedProduct = null;
-        document.getElementById('inv-stockin-form').classList.add('hidden');
-        return;
-      }
-
-      scannedProduct = product;
-      resultDiv.innerHTML = `<div class="alert-card info"><span class="alert-icon">✅</span><span class="alert-text">Found: <strong>${product.product_name}</strong></span></div>`;
-      document.getElementById('inv-product-name').value = product.product_name;
-      document.getElementById('inv-current-stock').value = product.stock_quantity;
-      document.getElementById('inv-add-qty').value = '';
-      if(document.getElementById('inv-batch-no')) document.getElementById('inv-batch-no').value = '';
-      if(document.getElementById('inv-expiry-date')) document.getElementById('inv-expiry-date').value = '';
-      document.getElementById('inv-stockin-form').classList.remove('hidden');
-      document.getElementById('inv-add-qty').focus();
-    } catch (err) {
-      resultDiv.innerHTML = `<div class="alert-card danger"><span class="alert-icon">❌</span><span class="alert-text">Scan error</span></div>`;
-    }
-  }
-
-  async function saveStockIn() {
-    if (!scannedProduct) return;
-    const qty = parseInt(document.getElementById('inv-add-qty').value);
-    if (!qty || qty < 1) { showToast('Enter a valid quantity', 'warning'); return; }
-
-    try {
-      const result = await window.api.inventory.stockIn({
-        barcode: scannedProduct.barcode,
-        quantity: qty,
-        batchNumber: document.getElementById('inv-batch-no') ? document.getElementById('inv-batch-no').value.trim() : '',
-        expiryDate: document.getElementById('inv-expiry-date') ? document.getElementById('inv-expiry-date').value : '',
-        userId: typeof currentUser !== 'undefined' && currentUser ? currentUser.id : null,
-      });
-
-      if (result.success) {
-        sessionLog.unshift({
-          name: scannedProduct.product_name,
-          barcode: scannedProduct.barcode,
-          qty,
-          newStock: result.product.stock_quantity,
-          time: new Date().toLocaleTimeString(),
-        });
-        renderSessionLog();
-
-        showToast(`Added ${qty} units to <strong>${scannedProduct.product_name}</strong>`, 'success');
-        scannedProduct = null;
-        document.getElementById('inv-stockin-form').classList.add('hidden');
-        document.getElementById('inv-scan-result').innerHTML = '';
-        document.getElementById('inv-scanner').focus();
-      } else {
-        showToast(result.error || 'Stock in failed', 'error');
-      }
-    } catch (err) {
-      showToast('Error: ' + (err.message || 'saving stock'), 'error');
-    }
-  }
-
-  function renderSessionLog() {
-    const logDiv = document.getElementById('inv-session-log');
-    if (sessionLog.length === 0) {
-      logDiv.innerHTML = '<div class="empty-state"><span class="empty-icon">📭</span><p>No items scanned yet</p></div>';
-      return;
-    }
-    logDiv.innerHTML = sessionLog.map(item => `
-      <div class="list-item">
-        <div class="li-icon">📥</div>
-        <div class="li-content">
-          <div class="li-title">${item.name}</div>
-          <div class="li-meta">${item.barcode} · +${item.qty} units · Now: ${item.newStock} · ${item.time}</div>
-        </div>
-      </div>
-    `).join('');
   }
 
   async function loadAdjustments() {
@@ -479,7 +267,7 @@ const InventoryModule = (() => {
         : await window.api.batches.getExpiring(99999);
 
       if (batches.length === 0) {
-        div.innerHTML = `<div class="alert-card info"><span class="alert-icon">✅</span><span class="alert-text">${onlyExpiring ? 'No batches expiring in the next 30 days' : 'No batches found. Add batches during product creation or stock in.'}</span></div>`;
+        div.innerHTML = `<div class="alert-card info"><span class="alert-icon">✅</span><span class="alert-text">${onlyExpiring ? 'No expiry items in the next 30 days' : 'No expiry items found. Add expiry items during product creation or stock in.'}</span></div>`;
         return;
       }
       div.innerHTML = `<div class="data-table-wrap"><table class="data-table"><thead><tr>
@@ -500,7 +288,7 @@ const InventoryModule = (() => {
         </tr>`;
       }).join('')}</tbody></table></div>`;
     } catch (err) {
-      div.innerHTML = '<div class="alert-card danger"><span class="alert-icon">❌</span><span class="alert-text">Error loading batches</span></div>';
+      div.innerHTML = '<div class="alert-card danger"><span class="alert-icon">❌</span><span class="alert-text">Error loading expiry items</span></div>';
     }
   }
 

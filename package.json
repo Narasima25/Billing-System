@@ -30,6 +30,8 @@
     "@electron/fuses": "^1.8.0",
     "@electron/rebuild": "^4.0.4",
     "electron": "^42.4.0",
-    "electron-rebuilder": "^1.0.1"
+    "electron-rebuilder": "^1.0.1",
+    "jimp": "^1.6.1",
+    "png-to-ico": "^3.0.1"
   }
 }

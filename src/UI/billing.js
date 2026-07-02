@@ -6,11 +6,12 @@
 
 const BillingModule = (() => {
   const panel = document.getElementById('panel-billing');
+
   let initialized = false;
   let cart = [];
+  let scanner;
   let selectedPaymentMode = 'cash';
-
-  let scanner = null;
+  let discountMode = 'amount';
 
   function init() {
     if (!initialized) {
@@ -70,24 +71,110 @@ const BillingModule = (() => {
           </div>
           <div style="flex:1; overflow-y:auto; padding:16px 20px;">
 
+            <!-- Customer Loyalty Section -->
+            <div id="loyalty-section" class="checkout-row" style="flex-direction: column; align-items: stretch; gap: 8px; margin-bottom: 16px; background: var(--bg-card); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+              <label style="font-weight: 600; display:flex; align-items:center; gap: 6px;"><i data-lucide="user"></i> Customer Details</label>
+              <input type="text" class="form-input" id="billing-customer-phone" placeholder="Enter Phone Number (10 digits)" maxlength="10">
+              <input type="text" class="form-input" id="billing-customer-name" placeholder="Customer Name (Optional)" style="display:none; margin-top:4px;">
+              <div id="customer-info" style="display:none; font-size: 13px; margin-top: 4px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                  <span id="cust-name-badge" class="badge" style="background:var(--accent-blue);color:#fff;">New Customer</span>
+                  <span id="cust-balance" style="font-weight:700; color:var(--accent-teal);">Balance: ₹0.00</span>
+                </div>
+                <div id="coupon-apply-wrap" style="display:none; margin-top:8px;">
+                  <label style="font-size:12px; font-weight:600; margin-bottom:4px; display:block;">Apply Coupon Discount (₹)</label>
+                  <input type="number" id="billing-applied-coupon" class="form-input" placeholder="Amount to apply" min="0" step="1">
+                </div>
+              </div>
+            </div>
+
+            <!-- B2B & Tax Options -->
+            <div class="checkout-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 5px;">
+                <label style="display:flex; align-items:center; gap: 4px; cursor:pointer;"><input type="checkbox" id="chk-b2b"> B2B Sale</label>
+                <label style="display:flex; align-items:center; gap: 4px; cursor:pointer;"><input type="checkbox" id="chk-inter-state"> Inter-State / Out of State</label>
+              </div>
+              <div id="b2b-fields" style="display:none; flex-direction:column; gap:8px;">
+                <input type="text" class="form-input" id="b2b-name" placeholder="Customer Business Name" autocomplete="off">
+                <input type="text" class="form-input" id="b2b-gstin" placeholder="15-digit GSTIN" autocomplete="off">
+                <input type="text" class="form-input" id="b2b-address" placeholder="Customer Address" autocomplete="off">
+                <input type="text" class="form-input" id="b2b-phone" placeholder="Customer Phone (Optional)" autocomplete="off">
+              </div>
+              <div id="inter-state-fields" style="display:none; flex-direction:column; gap:8px;">
+                <select class="form-select" id="customer-state-code" style="font-size:13px;" autocomplete="off">
+                  <option value="">-- Customer State --</option>
+                  <option value="01">01 - Jammu & Kashmir</option>
+                  <option value="02">02 - Himachal Pradesh</option>
+                  <option value="03">03 - Punjab</option>
+                  <option value="04">04 - Chandigarh</option>
+                  <option value="05">05 - Uttarakhand</option>
+                  <option value="06">06 - Haryana</option>
+                  <option value="07">07 - Delhi</option>
+                  <option value="08">08 - Rajasthan</option>
+                  <option value="09">09 - Uttar Pradesh</option>
+                  <option value="10">10 - Bihar</option>
+                  <option value="11">11 - Sikkim</option>
+                  <option value="12">12 - Arunachal Pradesh</option>
+                  <option value="13">13 - Nagaland</option>
+                  <option value="14">14 - Manipur</option>
+                  <option value="15">15 - Mizoram</option>
+                  <option value="16">16 - Tripura</option>
+                  <option value="17">17 - Meghalaya</option>
+                  <option value="18">18 - Assam</option>
+                  <option value="19">19 - West Bengal</option>
+                  <option value="20">20 - Jharkhand</option>
+                  <option value="21">21 - Odisha</option>
+                  <option value="22">22 - Chhattisgarh</option>
+                  <option value="23">23 - Madhya Pradesh</option>
+                  <option value="24">24 - Gujarat</option>
+                  <option value="26">26 - Dadra & Nagar Haveli and Daman & Diu</option>
+                  <option value="27">27 - Maharashtra</option>
+                  <option value="29">29 - Karnataka</option>
+                  <option value="30">30 - Goa</option>
+                  <option value="31">31 - Lakshadweep</option>
+                  <option value="32">32 - Kerala</option>
+                  <option value="33">33 - Tamil Nadu</option>
+                  <option value="34">34 - Puducherry</option>
+                  <option value="35">35 - Andaman & Nicobar Islands</option>
+                  <option value="36">36 - Telangana</option>
+                  <option value="37">37 - Andhra Pradesh</option>
+                  <option value="38">38 - Ladakh</option>
+                  <option value="97">97 - Other Territory</option>
+                </select>
+              </div>
+            </div>
 
             <!-- Totals -->
             <div id="billing-totals" class="mt-12">
               <div class="checkout-row">
-                <span class="label">Subtotal</span>
+                <span class="label">Taxable Value</span>
                 <span class="value" id="billing-subtotal">₹0.00</span>
               </div>
-              <div class="checkout-row">
+              <div class="checkout-row" id="row-cgst">
                 <span class="label">CGST</span>
                 <span class="value" id="billing-cgst">₹0.00</span>
               </div>
-              <div class="checkout-row">
+              <div class="checkout-row" id="row-sgst">
                 <span class="label">SGST</span>
                 <span class="value" id="billing-sgst">₹0.00</span>
               </div>
-              <div class="discount-input-wrap">
-                <label>Discount (₹)</label>
-                <input type="number" id="billing-discount" value="0" min="0" step="0.01">
+              <div class="checkout-row" id="row-igst" style="display:none;">
+                <span class="label">IGST</span>
+                <span class="value" id="billing-igst">₹0.00</span>
+              </div>
+              <div class="checkout-row" id="row-coupon-discount" style="display:none;">
+                <span class="label" style="color:var(--accent-teal);">Coupon Applied</span>
+                <span class="value" id="billing-coupon-discount" style="color:var(--accent-teal);">-₹0.00</span>
+              </div>
+              <div class="discount-input-wrap" style="display:flex; gap:10px;">
+                <div style="flex:1;">
+                  <label style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px; display:block;">Disc (%)</label>
+                  <input type="number" id="billing-discount-percent" class="form-input" value="0" min="0" step="0.01">
+                </div>
+                <div style="flex:1;">
+                  <label style="font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px; display:block;">Disc (₹)</label>
+                  <input type="number" id="billing-discount" class="form-input" value="0" min="0" step="0.01">
+                </div>
               </div>
               <div class="checkout-row total">
                 <span class="label">Grand Total</span>
@@ -111,9 +198,14 @@ const BillingModule = (() => {
 
           <!-- Actions -->
           <div class="pos-checkout-panel">
-            <div class="checkout-actions">
-              <button class="btn btn-danger" id="billing-clear-btn">✕ Clear</button>
-              <button class="btn btn-primary btn-lg" id="billing-checkout-btn" style="flex:2;">
+            <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <input type="checkbox" id="billing-send-whatsapp" checked style="accent-color: var(--accent-primary); width: 16px; height: 16px; cursor: pointer;">
+              <label for="billing-send-whatsapp" style="font-size: 14px; font-weight: 600; cursor: pointer; color: var(--accent-green);"><i data-lucide="message-circle" style="width: 16px; height: 16px; margin-bottom: -3px;"></i> Send WhatsApp Receipt</label>
+            </div>
+            <div class="checkout-actions" style="flex-wrap: wrap; gap: 8px;">
+              <button class="btn btn-secondary" onclick="openModal('modal-process-return')" style="flex:1;"><i data-lucide="rotate-ccw"></i> Returns</button>
+              <button class="btn btn-danger" id="billing-clear-btn" style="flex:1;">✕ Clear</button>
+              <button class="btn btn-primary btn-lg" id="billing-checkout-btn" style="flex:100%; margin-top:4px;">
                 ✓ Complete Sale (F8)
               </button>
             </div>
@@ -126,9 +218,10 @@ const BillingModule = (() => {
   }
 
   function bindEvents() {
-    // Global Scanner Buffer (Optimized for Mobile/3rd Party Scanner Apps)
+    // Global Scanner Buffer (Optimized for Mobile & Hardware Machine Scanners)
     let scanBuffer = '';
     let scanTimer = null;
+    let lastKeyTime = Date.now();
 
     document.addEventListener('keydown', async (e) => {
       if (!panel.classList.contains('active') || document.querySelector('.modal-overlay.visible')) return;
@@ -143,8 +236,9 @@ const BillingModule = (() => {
         let barcode = scanBuffer;
         scanBuffer = '';
 
-        // Fallback: If buffer dropped characters but input is focused, grab from input
-        if ((!barcode || barcode.length < 3) && scanner && document.activeElement === scanner) {
+        // Optimization for hardware machine scanners: They type extremely fast directly into the input.
+        // Always prefer the actual input value if focused, as it never drops characters natively.
+        if (scanner && document.activeElement === scanner && scanner.value.trim().length > 0) {
           barcode = scanner.value.trim();
         }
 
@@ -157,9 +251,16 @@ const BillingModule = (() => {
       }
 
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const currentTime = Date.now();
+        // Reset buffer if delay between keystrokes is too long (prevents garbage characters)
+        if (currentTime - lastKeyTime > 300) {
+          scanBuffer = '';
+        }
+        lastKeyTime = currentTime;
+
         scanBuffer += e.key;
         clearTimeout(scanTimer);
-        // Increased tolerance to 300ms for mobile scanner apps that type slower
+        // Tolerance for mobile apps that simulate typing slower
         scanTimer = setTimeout(() => { scanBuffer = ''; }, 300);
       }
     });
@@ -189,10 +290,130 @@ const BillingModule = (() => {
 
     // Discount change
     panel.addEventListener('input', (e) => {
-      if (e.target.id === 'billing-discount') updateTotals();
+      if (e.target.id === 'billing-discount') {
+        discountMode = 'amount';
+        updateTotals();
+      } else if (e.target.id === 'billing-discount-percent') {
+        discountMode = 'percent';
+        updateTotals();
+      } else if (e.target.id === 'billing-applied-coupon') {
+        updateTotals();
+      }
     });
 
+    // Customer Phone lookup
+    const phoneInput = document.getElementById('billing-customer-phone');
+    let phoneTimer = null;
+    if (phoneInput) {
+      phoneInput.addEventListener('input', (e) => {
+        // Allow only numbers
+        e.target.value = e.target.value.replace(/\D/g, '');
+        const phone = e.target.value;
+        const infoDiv = document.getElementById('customer-info');
+        const badge = document.getElementById('cust-name-badge');
+        const balSpan = document.getElementById('cust-balance');
+        const couponWrap = document.getElementById('coupon-apply-wrap');
+        const couponInput = document.getElementById('billing-applied-coupon');
+        const nameInput = document.getElementById('billing-customer-name');
 
+        if (phone.length === 10) {
+          clearTimeout(phoneTimer);
+          phoneTimer = setTimeout(async () => {
+            try {
+              const res = await window.api.billing.getCustomer(phone);
+              infoDiv.style.display = 'block';
+              nameInput.style.display = 'block';
+              if (res.success && res.customer) {
+                const cust = res.customer;
+                badge.textContent = cust.name || 'Returning Customer';
+                nameInput.value = cust.name || '';
+                badge.style.background = 'var(--accent-teal)';
+                balSpan.textContent = 'Balance: ' + formatRupees(cust.coupon_balance_paise);
+                if (cust.coupon_balance_paise > 0) {
+                  couponWrap.style.display = 'block';
+                } else {
+                  couponWrap.style.display = 'none';
+                  couponInput.value = '';
+                }
+              } else {
+                badge.textContent = 'New Customer';
+                nameInput.value = '';
+                badge.style.background = 'var(--accent-blue)';
+                balSpan.textContent = 'Balance: ₹0.00';
+                couponWrap.style.display = 'none';
+                couponInput.value = '';
+              }
+            } catch (err) { }
+          }, 300);
+        } else {
+          infoDiv.style.display = 'none';
+          nameInput.style.display = 'none';
+          couponInput.value = '';
+          updateTotals(); // in case they cleared phone
+        }
+      });
+    }
+
+    // B2B & Tax toggles
+    panel.addEventListener('change', (e) => {
+      if (e.target.id === 'chk-b2b') {
+        const fields = document.getElementById('b2b-fields');
+        fields.style.display = e.target.checked ? 'flex' : 'none';
+        if (e.target.checked) {
+          document.getElementById('b2b-name').focus();
+        } else {
+          // Clear item discounts when unticking B2B
+          cart.forEach(item => item.discountPaise = 0);
+        }
+        updateCartUI();
+      }
+      if (e.target.id === 'chk-inter-state') {
+        const interStateFields = document.getElementById('inter-state-fields');
+        const rowCgst = document.getElementById('row-cgst');
+        const rowSgst = document.getElementById('row-sgst');
+        const rowIgst = document.getElementById('row-igst');
+        if (e.target.checked) {
+          interStateFields.style.display = 'flex';
+          rowCgst.style.display = 'none';
+          rowSgst.style.display = 'none';
+          rowIgst.style.display = 'flex';
+        } else {
+          interStateFields.style.display = 'none';
+          document.getElementById('customer-state-code').value = '';
+          rowCgst.style.display = 'flex';
+          rowSgst.style.display = 'flex';
+          rowIgst.style.display = 'none';
+        }
+        updateTotals();
+      }
+    });
+
+    // Auto-detect inter-state from GSTIN (B2B): compare first 2 digits vs shop_state_code
+    document.getElementById('b2b-gstin').addEventListener('input', async (e) => {
+      const gstin = e.target.value.trim();
+      if (gstin.length >= 2) {
+        const custStateCode = gstin.substring(0, 2);
+        try {
+          const shopState = await window.api.settings.get('shop_state_code');
+          if (shopState && custStateCode !== shopState) {
+            document.getElementById('chk-inter-state').checked = true;
+            document.getElementById('inter-state-fields').style.display = 'flex';
+            document.getElementById('customer-state-code').value = custStateCode;
+            document.getElementById('row-cgst').style.display = 'none';
+            document.getElementById('row-sgst').style.display = 'none';
+            document.getElementById('row-igst').style.display = 'flex';
+          } else if (shopState && custStateCode === shopState) {
+            document.getElementById('chk-inter-state').checked = false;
+            document.getElementById('inter-state-fields').style.display = 'none';
+            document.getElementById('customer-state-code').value = '';
+            document.getElementById('row-cgst').style.display = 'flex';
+            document.getElementById('row-sgst').style.display = 'flex';
+            document.getElementById('row-igst').style.display = 'none';
+          }
+          updateTotals();
+        } catch (err) { /* ignore settings fetch error */ }
+      }
+    });
 
     // Manual Product Search (By Name)
     const manualSearch = document.getElementById('billing-manual-search');
@@ -208,7 +429,7 @@ const BillingModule = (() => {
         }
         const data = await window.api.products.getAll({ search: q, perPage: 15 });
         const products = data.products.filter(p => p.is_active === 1);
-        
+
         if (products.length === 0) {
           resultsDiv.innerHTML = `<div class="customer-result-item text-muted">No products found</div>`;
         } else {
@@ -230,10 +451,10 @@ const BillingModule = (() => {
     document.getElementById('billing-manual-results').addEventListener('click', async (e) => {
       const item = e.target.closest('.customer-result-item');
       if (!item || !item.dataset.barcode) return;
-      
+
       document.getElementById('billing-manual-results').classList.remove('show');
       manualSearch.value = '';
-      
+
       await handleScan(item.dataset.barcode);
     });
 
@@ -268,18 +489,30 @@ const BillingModule = (() => {
     });
 
     document.getElementById('billing-cart-items').addEventListener('input', (e) => {
+      const idx = parseInt(e.target.closest('[data-index]')?.dataset.index);
+      if (isNaN(idx)) return;
+
       if (e.target.classList.contains('ci-price-input')) {
-        const idx = parseInt(e.target.closest('[data-index]')?.dataset.index);
-        if (isNaN(idx)) return;
         const newPrice = parseFloat(e.target.value);
         if (!isNaN(newPrice) && newPrice >= 0) {
           cart[idx].unitPricePaise = Math.round(newPrice * 100);
-          updateTotals();
-          
-          const lineTotal = cart[idx].unitPricePaise * cart[idx].quantity;
-          e.target.closest('.cart-item').querySelector('.ci-total').textContent = formatRupees(lineTotal);
+        }
+      } else if (e.target.classList.contains('ci-discount-input')) {
+        const newDiscount = parseFloat(e.target.value);
+        if (!isNaN(newDiscount) && newDiscount >= 0) {
+          cart[idx].discountPaise = Math.round(newDiscount * 100);
+        }
+      } else if (e.target.classList.contains('ci-free-input')) {
+        const newFreeQty = parseInt(e.target.value);
+        if (!isNaN(newFreeQty) && newFreeQty >= 0) {
+          cart[idx].freeQuantity = newFreeQty;
         }
       }
+
+      updateTotals();
+      const discountAmount = cart[idx].discountPaise || 0;
+      const lineTotal = (cart[idx].unitPricePaise * cart[idx].quantity) - discountAmount;
+      e.target.closest('.cart-item').querySelector('.ci-total').textContent = formatRupees(Math.max(0, lineTotal));
     });
 
     // Keyboard shortcuts
@@ -291,15 +524,7 @@ const BillingModule = (() => {
       if (e.key === 'F8') { e.preventDefault(); handleCheckout(); }
     });
 
-    // Focus scanner periodically if not typing elsewhere
-    setInterval(() => {
-      if (panel.classList.contains('active') && scanner &&
-          document.activeElement.tagName !== 'INPUT' &&
-          document.activeElement.tagName !== 'SELECT' &&
-          document.activeElement.tagName !== 'TEXTAREA') {
-        scanner.focus();
-      }
-    }, 3000);
+    // Removed aggressive focus stealing interval. Global keystrokes are already captured by the keydown listener.
   }
 
   async function handleScan(barcode) {
@@ -349,7 +574,9 @@ const BillingModule = (() => {
           _stockQty: product.stock_quantity,
           supplierName: product.supplier_name || 'N/A',
           batchNumber: firstBatch ? firstBatch.batch_number : 'N/A',
-          originalCostPaise: firstBatch ? firstBatch.purchase_price_paise : (product.purchase_price_paise || 0),
+          originalCostPaise: (firstBatch && firstBatch.purchase_price_paise > 0)
+            ? firstBatch.purchase_price_paise
+            : (product.purchase_price_paise || 0),
           hsnCode: product.hsn_code || '',
         });
       }
@@ -366,6 +593,7 @@ const BillingModule = (() => {
     const cartArea = document.getElementById('billing-cart-items');
     const emptyState = document.getElementById('billing-cart-empty');
     const countSpan = document.getElementById('billing-cart-count');
+    const isB2B = document.getElementById('chk-b2b') ? document.getElementById('chk-b2b').checked : false;
 
     if (cart.length === 0) {
       emptyState.style.display = '';
@@ -375,13 +603,18 @@ const BillingModule = (() => {
       emptyState.style.display = 'none';
       countSpan.textContent = `${cart.length} item${cart.length > 1 ? 's' : ''}`;
       cartArea.innerHTML = cart.map((item, idx) => {
-        const lineTotal = item.unitPricePaise * item.quantity;
+        const discountAmount = item.discountPaise || 0;
+        const lineTotal = (item.unitPricePaise * item.quantity) - discountAmount;
+
         return `
           <div class="cart-item" data-index="${idx}" style="flex-direction: column; align-items: stretch; gap: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div style="flex: 1;">
                 <div class="ci-name">${item.productName}</div>
                 <div class="ci-barcode">${item.barcode}</div>
+                <div style="font-size: 12px; color: var(--accent-blue); margin-top: 4px; font-weight: 600;">
+                  Supplier Purchasing Price: ${formatRupees(item.originalCostPaise)}
+                </div>
               </div>
               <div class="qty-control" style="margin-right: 12px;">
                 <button class="qty-minus" title="Decrease">−</button>
@@ -392,13 +625,23 @@ const BillingModule = (() => {
                 <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">₹</span>
                 <input type="number" class="ci-price-input" value="${(item.unitPricePaise / 100).toFixed(2)}" step="0.01" min="0" style="width: 75px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); text-align: right; font-weight: 700; background: var(--bg-input); color: var(--text-primary); outline: none;">
               </div>
-              <span class="ci-total" style="width: 80px; text-align: right; margin-right: 12px;">${formatRupees(lineTotal)}</span>
+              <span class="ci-total" style="width: 80px; text-align: right; margin-right: 12px;">${formatRupees(Math.max(0, lineTotal))}</span>
               <button class="ci-remove" title="Remove">✕</button>
             </div>
-            <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 16px; border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 2px;">
+            <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 16px; border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 2px;">
               <span style="display: flex; align-items: center;"><i data-lucide="truck" style="width:12px;height:12px;margin-right:4px;"></i> ${item.supplierName}</span>
-              <span style="display: flex; align-items: center;"><i data-lucide="tag" style="width:12px;height:12px;margin-right:4px;"></i> Cost: ${formatRupees(item.originalCostPaise)}</span>
               <span style="display: flex; align-items: center;"><i data-lucide="layers" style="width:12px;height:12px;margin-right:4px;"></i> Batch: ${item.batchNumber}</span>
+              
+              <div style="margin-left: auto; display: flex; gap: 12px; align-items: center;">
+                <label style="display: flex; align-items: center; gap: 4px; ${!isB2B ? 'opacity: 0.5; pointer-events: none;' : ''}">
+                  Discount: ₹
+                  <input type="number" class="ci-discount-input" value="${((item.discountPaise || 0) / 100).toFixed(2)}" step="0.01" min="0" ${!isB2B ? 'disabled' : ''} style="width: 60px; padding: 2px 4px; font-size: 11px; border: 1px solid var(--border); border-radius: 2px;">
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px;">
+                  Free Qty:
+                  <input type="number" class="ci-free-input" value="${item.freeQuantity || 0}" min="0" step="1" style="width: 40px; padding: 2px 4px; font-size: 11px; border: 1px solid var(--border); border-radius: 2px;">
+                </label>
+              </div>
             </div>
           </div>`;
       }).join('');
@@ -412,24 +655,83 @@ const BillingModule = (() => {
     let subtotal = 0;
     let cgst = 0;
     let sgst = 0;
+    let igst = 0;
+
+    const isInterState = document.getElementById('chk-inter-state') ? document.getElementById('chk-inter-state').checked : false;
 
     cart.forEach(item => {
-      const line = item.unitPricePaise * item.quantity;
-      subtotal += line;
+      const discount = item.discountPaise || 0;
+      const lineTotal = Math.max(0, (item.unitPricePaise * item.quantity) - discount);
+      subtotal += lineTotal;
       if (item.gstPercent > 0) {
-        const gst = Math.round(line * item.gstPercent / 100);
-        cgst += Math.round(gst / 2);
-        sgst += Math.round(gst / 2);
+        const gstAmount = Math.round(lineTotal * item.gstPercent / 100);
+        if (isInterState) {
+          igst += gstAmount;
+        } else {
+          cgst += Math.round(gstAmount / 2);
+          sgst += Math.round(gstAmount / 2);
+        }
       }
     });
 
-    const discountStr = document.getElementById('billing-discount').value;
-    const discountPaise = parseRupeesToPaise(discountStr || '0');
-    const grandTotal = subtotal + cgst + sgst - discountPaise;
+    const preDiscountTotalPaise = subtotal + cgst + sgst + igst;
+
+    if (discountMode === 'percent') {
+      const pct = parseFloat(document.getElementById('billing-discount-percent') ? document.getElementById('billing-discount-percent').value : '0') || 0;
+      const amtPaise = Math.round((preDiscountTotalPaise * pct) / 100);
+      document.getElementById('billing-discount').value = (amtPaise / 100).toFixed(2);
+    } else {
+      const amtPaise = parseRupeesToPaise(document.getElementById('billing-discount').value || '0');
+      if (document.getElementById('billing-discount-percent')) {
+        if (preDiscountTotalPaise > 0) {
+          document.getElementById('billing-discount-percent').value = ((amtPaise / preDiscountTotalPaise) * 100).toFixed(2);
+        } else {
+          document.getElementById('billing-discount-percent').value = '0';
+        }
+      }
+    }
+
+    const discountPaise = parseRupeesToPaise(document.getElementById('billing-discount').value || '0');
+    let appliedCouponPaise = parseRupeesToPaise(document.getElementById('billing-applied-coupon') ? document.getElementById('billing-applied-coupon').value || '0' : '0');
+    const totalBeforeCoupon = preDiscountTotalPaise - discountPaise;
+
+    const isB2B = document.getElementById('chk-b2b') ? document.getElementById('chk-b2b').checked : false;
+    const isB2CSmall = !isB2B && (totalBeforeCoupon <= 25000000); // <= 2.5L
+
+    const loyaltySection = document.getElementById('loyalty-section');
+    if (loyaltySection) {
+      if (isB2CSmall) {
+        loyaltySection.style.display = 'flex';
+      } else {
+        loyaltySection.style.display = 'none';
+        appliedCouponPaise = 0;
+        document.getElementById('billing-customer-phone').value = '';
+        if (document.getElementById('billing-customer-name')) {
+          document.getElementById('billing-customer-name').value = '';
+          document.getElementById('billing-customer-name').style.display = 'none';
+        }
+        document.getElementById('customer-info').style.display = 'none';
+        document.getElementById('billing-applied-coupon').value = '';
+      }
+    }
+
+    const grandTotal = totalBeforeCoupon - appliedCouponPaise;
+
+    const rowCoupon = document.getElementById('row-coupon-discount');
+    if (appliedCouponPaise > 0) {
+      rowCoupon.style.display = 'flex';
+      document.getElementById('billing-coupon-discount').textContent = '-' + formatRupees(appliedCouponPaise);
+    } else {
+      rowCoupon.style.display = 'none';
+    }
 
     document.getElementById('billing-subtotal').textContent = formatRupees(subtotal);
-    document.getElementById('billing-cgst').textContent = formatRupees(cgst);
-    document.getElementById('billing-sgst').textContent = formatRupees(sgst);
+    if (!isInterState) {
+      document.getElementById('billing-cgst').textContent = formatRupees(cgst);
+      document.getElementById('billing-sgst').textContent = formatRupees(sgst);
+    } else {
+      document.getElementById('billing-igst').textContent = formatRupees(igst);
+    }
     document.getElementById('billing-grand-total').textContent = formatRupees(Math.max(0, grandTotal));
   }
 
@@ -443,38 +745,155 @@ const BillingModule = (() => {
       barcode: item.barcode,
       productName: item.productName,
       quantity: item.quantity,
+      freeQuantity: item.freeQuantity || 0,
       unitPricePaise: item.unitPricePaise,
+      discountPaise: item.discountPaise || 0,
       gstPercent: item.gstPercent,
       hsnCode: item.hsnCode,
     }));
 
     try {
+      const isB2B = document.getElementById('chk-b2b').checked;
+      const isInterState = document.getElementById('chk-inter-state').checked;
+      let customerName = document.getElementById('b2b-name').value.trim();
+      const customerGstin = document.getElementById('b2b-gstin').value.trim();
+
+      if (isB2B && !customerName) {
+        showToast('Please enter Business Name for B2B sale', 'warning');
+        return;
+      }
+
+      const customerStateCode = document.getElementById('customer-state-code').value;
+      const customerPhone = isB2B 
+        ? (document.getElementById('b2b-phone') ? document.getElementById('b2b-phone').value.trim() : '')
+        : (document.getElementById('billing-customer-phone') ? document.getElementById('billing-customer-phone').value.trim() : '');
+      const customerAddress = document.getElementById('b2b-address') ? document.getElementById('b2b-address').value.trim() : '';
+      const appliedCouponPaise = parseRupeesToPaise(document.getElementById('billing-applied-coupon') ? document.getElementById('billing-applied-coupon').value || '0' : '0');
+
+      if (!isB2B && customerPhone) {
+        customerName = document.getElementById('billing-customer-name').value.trim();
+      }
+
+      // Enforce customer state for inter-state sales
+      if (isInterState && !customerStateCode) {
+        showToast('Please select Customer State for inter-state sale', 'warning');
+        return;
+      }
+
+      // Calculate approximate grand total to check B2C thresholds
+      let approxTotal = 0;
+      cart.forEach(item => {
+        const lineTotal = item.unitPricePaise * item.quantity;
+        approxTotal += lineTotal + Math.round(lineTotal * (item.gstPercent || 0) / 100);
+      });
+      approxTotal -= discountPaise;
+
+      // B2C Large enforcement: inter-state B2C over ₹2.5L must have state
+      if (!isB2B && isInterState) {
+        if (approxTotal > 25000000 && !customerStateCode) {
+          showToast('B2C Large (>₹2.5L): Customer State is MANDATORY', 'error');
+          return;
+        }
+      }
+
+      // Loyalty Reminder: Warn if >= ₹1000, missing phone, and eligible (B2C Small)
+      if (!isB2B && approxTotal >= 100000 && approxTotal <= 25000000 && !customerPhone) {
+        const proceed = await new Promise(resolve => {
+          document.getElementById('btn-loyalty-cancel').onclick = () => {
+            closeModal('modal-loyalty-confirm');
+            resolve(false);
+          };
+          document.getElementById('btn-loyalty-continue').onclick = () => {
+            closeModal('modal-loyalty-confirm');
+            resolve(true);
+          };
+          openModal('modal-loyalty-confirm');
+        });
+
+        if (!proceed) {
+          const phoneInput = document.getElementById('billing-customer-phone');
+          if (phoneInput) phoneInput.focus();
+          return;
+        }
+      }
+
       const result = await window.api.billing.checkout({
         cartItems,
         paymentMode: selectedPaymentMode,
         discountPaise,
         userId: currentUser ? currentUser.id : null,
+        isB2B,
+        isInterState,
+        customerName,
+        customerGstin,
+        customerStateCode,
+        customerPhone,
+        customerAddress,
+        appliedCouponPaise,
+        sendWhatsappReceipt: document.getElementById('billing-send-whatsapp') ? document.getElementById('billing-send-whatsapp').checked : false
       });
 
       if (result.success) {
         // Show confirmation modal
         const confirmDiv = document.getElementById('checkout-confirm-content');
+
+        let rewardHtml = '';
+        if (result.rewardEarnedPaise > 0) {
+          rewardHtml = `
+            <div style="margin-top:16px; padding:12px; background:rgba(32, 201, 151, 0.1); border:1px dashed var(--accent-teal); border-radius:8px;">
+              <div style="font-size:24px; margin-bottom:4px;">🎉</div>
+              <div style="color:var(--accent-teal); font-weight:800; font-size:16px;">Reward Earned!</div>
+              <div style="font-size:14px;">Tell the customer they won <b>${formatRupees(result.rewardEarnedPaise)}</b> for their next visit!</div>
+            </div>
+          `;
+        }
+
         confirmDiv.innerHTML = `
           <div style="font-size:48px;margin-bottom:12px;">✅</div>
           <div style="font-size:20px;font-weight:800;margin-bottom:8px;">Sale Complete!</div>
           <div class="font-mono fw-700" style="font-size:16px;color:var(--accent-teal);margin-bottom:16px;">${result.receiptNumber}</div>
           <div style="font-size:32px;font-weight:900;color:var(--accent-teal);">${formatRupees(result.grandTotalPaise)}</div>
           <div class="text-muted text-sm mt-8">Payment: ${selectedPaymentMode.toUpperCase()}</div>
+          ${rewardHtml}
         `;
 
         // Build receipt for printing
-        buildReceipt(result, cartItems);
+        await buildReceipt(result, cartItems);
 
         openModal('modal-checkout-confirm');
 
         // Reset
         cart = [];
         document.getElementById('billing-discount').value = '0';
+        if (document.getElementById('billing-discount-percent')) {
+          document.getElementById('billing-discount-percent').value = '0';
+        }
+        discountMode = 'amount';
+        if (document.getElementById('billing-customer-phone')) {
+          document.getElementById('billing-customer-phone').value = '';
+          const infoDiv = document.getElementById('customer-info');
+          if (infoDiv) infoDiv.style.display = 'none';
+          const nameInput = document.getElementById('billing-customer-name');
+          if (nameInput) {
+            nameInput.value = '';
+            nameInput.style.display = 'none';
+          }
+          const couponInput = document.getElementById('billing-applied-coupon');
+          if (couponInput) couponInput.value = '';
+        }
+        document.getElementById('chk-b2b').checked = false;
+        document.getElementById('b2b-fields').style.display = 'none';
+        document.getElementById('b2b-name').value = '';
+        document.getElementById('b2b-gstin').value = '';
+        document.getElementById('chk-inter-state').checked = false;
+        document.getElementById('inter-state-fields').style.display = 'none';
+        document.getElementById('customer-state-code').value = '';
+        document.getElementById('row-cgst').style.display = 'flex';
+        document.getElementById('row-sgst').style.display = 'flex';
+        document.getElementById('row-igst').style.display = 'none';
+        if (document.getElementById('billing-send-whatsapp')) {
+          document.getElementById('billing-send-whatsapp').checked = true;
+        }
         updateCartUI();
 
         showToast(`Sale ${result.receiptNumber} — ${formatRupees(result.grandTotalPaise)}`, 'success');
@@ -489,55 +908,312 @@ const BillingModule = (() => {
     scanner.focus();
   }
 
-  function buildReceipt(saleResult, cartItems) {
-    const container = document.getElementById('receipt-container');
+  async function buildReceipt(saleResult, cartItems) {
+    const receiptContainer = document.getElementById('receipt-container');
+    const invoiceContainer = document.getElementById('invoice-container');
+    const settings = await window.api.settings.getAll();
+    const storeName = settings.store_name || 'SKY PET SHOP';
+    const storeAddress = settings.store_address || '';
+    const storePhone = settings.store_phone || '';
+    const shopGstin = settings.shop_gstin || '';
+    const shopUpiId = settings.shop_upi_id || '';
+
     const now = new Date();
     const dateStr = formatDate(now.toISOString());
 
-    let itemsHtml = cartItems.map(item => {
-      const total = item.unitPricePaise * item.quantity;
-      return `<div class="r-row"><span>${item.productName}</span></div>
-              <div class="r-row"><span>&nbsp;&nbsp;${item.quantity} x ${formatRupees(item.unitPricePaise)}</span><span>${formatRupees(total)}</span></div>`;
-    }).join('');
+    if (saleResult.isB2B) {
+      document.body.classList.add('print-b2b');
 
-    container.innerHTML = `
-      <div class="r-center r-bold" style="font-size:16px;">PET STORE</div>
-      <div class="r-center" style="font-size:10px;">Your Trusted Pet Store</div>
-      <div class="r-line"></div>
-      <div class="r-row"><span>Receipt:</span><span>${saleResult.receiptNumber}</span></div>
-      <div class="r-row"><span>Date:</span><span>${dateStr}</span></div>
-      <div class="r-line"></div>
-      ${itemsHtml}
-      <div class="r-line"></div>
-      <div class="r-row"><span>Subtotal</span><span>${formatRupees(saleResult.subtotalPaise)}</span></div>
-      <div class="r-row"><span>CGST</span><span>${formatRupees(saleResult.cgstPaise)}</span></div>
-      <div class="r-row"><span>SGST</span><span>${formatRupees(saleResult.sgstPaise)}</span></div>
-      ${saleResult.discountPaise > 0 ? `<div class="r-row"><span>Discount</span><span>-${formatRupees(saleResult.discountPaise)}</span></div>` : ''}
-      <div class="r-line"></div>
-      <div class="r-row r-total"><span>GRAND TOTAL</span><span>${formatRupees(saleResult.grandTotalPaise)}</span></div>
-      <div class="r-line"></div>
-      <div class="r-row"><span>Payment:</span><span>${selectedPaymentMode.toUpperCase()}</span></div>
-      <div class="r-line"></div>
-      <div class="r-center" style="margin-top:8px;">Thank You! Visit Again 🐾</div>
-    `;
+      let invoiceItemsHtml = cartItems.map((item, idx) => {
+        const discountAmount = item.discountPaise || 0;
+        const lineTotal = (item.unitPricePaise * item.quantity) - discountAmount;
+
+        let taxesHtml = '';
+        if (saleResult.isInterState) {
+          const igst = Math.round(lineTotal * item.gstPercent / 100);
+          taxesHtml = `<td>${item.gstPercent}%</td><td>${formatRupees(igst)}</td>`;
+        } else {
+          const cgst = Math.round((lineTotal * item.gstPercent / 100) / 2);
+          taxesHtml = `<td>${item.gstPercent}%</td><td>${formatRupees(cgst)}</td><td>${formatRupees(cgst)}</td>`;
+        }
+
+        return `
+          <tr>
+            <td style="text-align:center;">${idx + 1}</td>
+            <td>${item.productName}</td>
+            <td>${item.hsnCode || ''}</td>
+            <td style="text-align:right;">${item.quantity}</td>
+            <td style="text-align:right;">${item.freeQuantity || 0}</td>
+            <td style="text-align:right;">${formatRupees(item.unitPricePaise)}</td>
+            <td style="text-align:right;">${formatRupees(discountAmount)}</td>
+            <td style="text-align:right;">${formatRupees(Math.max(0, lineTotal))}</td>
+            ${taxesHtml}
+            <td style="text-align:right;font-weight:bold;">${formatRupees(lineTotal + Math.round(lineTotal * item.gstPercent / 100))}</td>
+          </tr>
+        `;
+      }).join('');
+
+      let taxHeader = saleResult.isInterState
+        ? `<th>IGST Rate</th><th>IGST Amt</th>`
+        : `<th>GST Rate</th><th>CGST Amt</th><th>SGST Amt</th>`;
+
+      invoiceContainer.innerHTML = `
+        <div class="invoice-title" style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px;">
+          ${saleResult.isB2B ? 'TAX INVOICE' : 'RECEIPT'}
+        </div>
+        
+        <div class="invoice-parties" style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+          <div style="flex: 1; text-align: left;">
+            <div><b>Billed To:</b></div>
+            ${saleResult.customerName ? `<div><b>${saleResult.customerName}</b></div>` : ''}
+            ${saleResult.customerAddress ? `<div>${saleResult.customerAddress}</div>` : ''}
+            ${saleResult.customerPhone ? `<div>Ph: ${saleResult.customerPhone}</div>` : ''}
+            ${saleResult.customerGstin ? `<div>GSTIN: ${saleResult.customerGstin}</div>` : ''}
+            ${saleResult.customerStateCode ? `<div>State Code: ${saleResult.customerStateCode}</div>` : ''}
+          </div>
+          
+          <div style="flex: 1; text-align: center;">
+            <div><b>Invoice No:</b> ${saleResult.receiptNumber}</div>
+            <div><b>Date:</b> ${dateStr}</div>
+            <div><b>Payment:</b> ${selectedPaymentMode.toUpperCase()}</div>
+          </div>
+          
+          <div style="flex: 1; text-align: right;">
+            <div><b>From:</b></div>
+            <div style="font-weight:bold;">${storeName}</div>
+            ${storeAddress ? `<div>${storeAddress}</div>` : ''}
+            ${storePhone ? `<div>Ph: ${storePhone}</div>` : ''}
+            ${shopGstin ? `<div>GSTIN: <b>${shopGstin}</b></div>` : ''}
+          </div>
+        </div>
+        
+        <table class="invoice-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Description of Goods</th>
+              <th>HSN/SAC</th>
+              <th>Qty</th>
+              <th>Free</th>
+              <th>Rate</th>
+              <th>Discount</th>
+              <th>Taxable Value</th>
+              ${taxHeader}
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${invoiceItemsHtml}
+          </tbody>
+        </table>
+        
+        <table class="invoice-totals">
+          <tr>
+            <td>Total Taxable Value</td>
+            <td style="text-align:right;">${formatRupees(saleResult.subtotalPaise)}</td>
+          </tr>
+          ${saleResult.discountPaise > 0 ? `
+          <tr>
+            <td>Overall Discount <span style="font-size:10px; color:var(--text-muted);">(${(saleResult.discountPaise / (saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise) * 100).toFixed(2)}%)</span></td>
+            <td style="text-align:right;">-${formatRupees(saleResult.discountPaise)}</td>
+          </tr>` : ''}
+          ${saleResult.isInterState ? `
+          <tr>
+            <td>IGST Total</td>
+            <td style="text-align:right;">${formatRupees(saleResult.igstPaise)}</td>
+          </tr>` : `
+          <tr>
+            <td>CGST Total</td>
+            <td style="text-align:right;">${formatRupees(saleResult.cgstPaise)}</td>
+          </tr>
+          <tr>
+            <td>SGST Total</td>
+            <td style="text-align:right;">${formatRupees(saleResult.sgstPaise)}</td>
+          </tr>`}
+          <tr>
+            <td><b>GRAND TOTAL</b></td>
+            <td style="text-align:right;"><b>${formatRupees(saleResult.grandTotalPaise)}</b></td>
+          </tr>
+        </table>
+        
+        <div style="margin-top:40px; display:flex; justify-content:space-between;">
+          <div><br><br><b>Customer Signature</b></div>
+          <div style="text-align:right;"><br><br><b>Authorized Signatory</b><br>${storeName}</div>
+        </div>
+      `;
+    } else {
+      document.body.classList.remove('print-b2b');
+
+      let itemsHtml = cartItems.map(item => {
+        const discountAmount = item.discountPaise || 0;
+        const lineTotal = (item.unitPricePaise * item.quantity) - discountAmount;
+        let html = `<div class="r-row"><span>${item.productName}${item.hsnCode ? ` <span style="font-size:10px;">(HSN: ${item.hsnCode})</span>` : ''}</span></div>`;
+        html += `<div class="r-row"><span>&nbsp;&nbsp;${item.quantity} x ${formatRupees(item.unitPricePaise)}</span><span>${formatRupees(Math.max(0, lineTotal))}</span></div>`;
+        if (item.freeQuantity > 0) {
+          html += `<div class="r-row"><span>&nbsp;&nbsp;+ ${item.freeQuantity} Free</span><span></span></div>`;
+        }
+        if (discountAmount > 0) {
+          html += `<div class="r-row"><span>&nbsp;&nbsp;Discount</span><span>-${formatRupees(discountAmount)}</span></div>`;
+        }
+        return html;
+      }).join('');
+
+      receiptContainer.innerHTML = `
+        <div class="r-center r-bold" style="font-size:16px;">${storeName}</div>
+        ${storePhone ? `<div class="r-center" style="font-size:10px;">Ph: ${storePhone}</div>` : ''}
+        <div class="r-line"></div>
+        <div class="r-row"><span>Receipt:</span><span>${saleResult.receiptNumber}</span></div>
+        <div class="r-row"><span>Date:</span><span>${dateStr}</span></div>
+        ${(saleResult.customerName || saleResult.customerPhone) ? `<div class="r-row"><span>Customer:</span><span>${saleResult.customerName || saleResult.customerPhone}</span></div>` : ''}
+        <div class="r-line"></div>
+        ${itemsHtml}
+        <div class="r-line"></div>
+        <div class="r-row"><span>Taxable Value</span><span>${formatRupees(saleResult.subtotalPaise)}</span></div>
+        ${saleResult.isInterState ?
+          `<div class="r-row"><span>IGST</span><span>${formatRupees(saleResult.igstPaise)}</span></div>` :
+          `<div class="r-row"><span>CGST</span><span>${formatRupees(saleResult.cgstPaise)}</span></div>
+           <div class="r-row"><span>SGST</span><span>${formatRupees(saleResult.sgstPaise)}</span></div>`
+        }
+        ${saleResult.discountPaise > 0 ? `<div class="r-row"><span>Cart Discount <span style="font-size:10px">(${(saleResult.discountPaise / (saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise) * 100).toFixed(2)}%)</span></span><span>-${formatRupees(saleResult.discountPaise)}</span></div>` : ''}
+        ${saleResult.appliedCouponPaise > 0 ? `<div class="r-row"><span>Coupon Applied</span><span>-${formatRupees(saleResult.appliedCouponPaise)}</span></div>` : ''}
+        <div class="r-line"></div>
+        <div class="r-row r-total"><span>GRAND TOTAL</span><span>${formatRupees(saleResult.grandTotalPaise)}</span></div>
+        <div class="r-line"></div>
+        <div class="r-row"><span>Payment:</span><span>${selectedPaymentMode.toUpperCase()}</span></div>
+        ${saleResult.rewardEarnedPaise > 0 || saleResult.customerPhone ? `
+        <div class="r-line"></div>
+        ` : ''}
+        ${saleResult.rewardEarnedPaise > 0 ? `
+        <div class="r-center" style="font-weight:bold; margin-top:4px;">🎉 Congratulations! 🎉</div>
+        <div class="r-center" style="font-size:11px;">You won a bonus coupon of: ${formatRupees(saleResult.rewardEarnedPaise)}</div>
+        ` : ''}
+        ${saleResult.customerPhone ? `
+        <div class="r-center" style="font-size:11px; margin-top:4px; font-weight:bold;">Your Total Coupon Balance: ${formatRupees(saleResult.newCouponBalancePaise)}</div>
+        <div class="r-center" style="font-size:10px;">(Valid on your next purchase!)</div>
+        ` : ''}
+        <div class="r-line"></div>
+        <div class="r-center" style="margin-top:8px;">Thank You! Visit Again 🐾</div>
+        <div class="r-center" style="font-size:10px; margin-top:4px;">${storeAddress}</div>
+      `;
+
+    }
+
+    // UPI QR Button Handler
+    const btnGenerateQr = document.getElementById('btn-generate-qr');
+    if (btnGenerateQr) {
+      if (shopUpiId && selectedPaymentMode === 'upi') {
+        btnGenerateQr.style.display = 'inline-flex';
+        btnGenerateQr.onclick = () => {
+          const confirmContent = document.getElementById('checkout-confirm-content');
+          let qrWrap = document.getElementById('inline-upi-qr');
+          if (!qrWrap) {
+            const upiString = `upi://pay?pa=${shopUpiId}&pn=${encodeURIComponent(storeName)}&am=${(saleResult.grandTotalPaise / 100).toFixed(2)}&cu=INR`;
+            confirmContent.insertAdjacentHTML('beforeend', `
+              <div id="inline-upi-qr" style="margin-top:16px; padding:16px; border:2px dashed var(--accent-violet); border-radius:8px; display:inline-block; background:rgba(124,58,237,0.05); text-align:center;">
+                <div style="font-size:12px; font-weight:800; margin-bottom:8px; color:var(--accent-violet);">Scan to Pay ₹${(saleResult.grandTotalPaise / 100).toFixed(2)}</div>
+                <canvas id="inline-qr-canvas"></canvas>
+                <div style="font-size:11px; margin-top:8px; color:var(--text-muted); font-weight:600;">${shopUpiId}</div>
+              </div>
+            `);
+            setTimeout(() => {
+              if (window.QRious) {
+                new QRious({
+                  element: document.getElementById('inline-qr-canvas'),
+                  value: upiString,
+                  size: 180,
+                  level: 'H'
+                });
+              }
+            }, 50);
+            btnGenerateQr.style.display = 'none'; // Hide button once generated
+          }
+        };
+        // Auto-generate the QR code so the user doesn't have to click
+        setTimeout(() => btnGenerateQr.click(), 50);
+      } else {
+        btnGenerateQr.style.display = 'none';
+      }
+    }
 
     // Print button handler
     document.getElementById('btn-print-receipt').onclick = () => {
       window.print();
     };
-  }
 
+    // Preview button handler
+    const btnPreview = document.getElementById('btn-preview-receipt');
+    if (btnPreview) {
+      btnPreview.onclick = () => {
+        const previewContent = document.getElementById('receipt-preview-content');
+        if (saleResult.isB2B) {
+          previewContent.innerHTML = invoiceContainer.innerHTML;
+          previewContent.parentElement.style.width = '210mm'; // Expand modal for A4 preview
+        } else {
+          previewContent.innerHTML = receiptContainer.innerHTML;
+          previewContent.parentElement.style.width = '340px'; // Reset modal to thermal width
+        }
+        openModal('modal-receipt-preview');
+      };
+    }
+  }
 
 
   function newSale() {
     cart = [];
     document.getElementById('billing-discount').value = '0';
+    if (document.getElementById('billing-discount-percent')) {
+      document.getElementById('billing-discount-percent').value = '0';
+    }
+    discountMode = 'amount';
+    if (document.getElementById('billing-customer-phone')) {
+      document.getElementById('billing-customer-phone').value = '';
+      const infoDiv = document.getElementById('customer-info');
+      if (infoDiv) infoDiv.style.display = 'none';
+      const nameInput = document.getElementById('billing-customer-name');
+      if (nameInput) {
+        nameInput.value = '';
+        nameInput.style.display = 'none';
+      }
+      const couponInput = document.getElementById('billing-applied-coupon');
+      if (couponInput) couponInput.value = '';
+    }
     updateCartUI();
     scanner.focus();
     showToast('New sale started', 'info');
   }
 
+  async function processReturnSubmit() {
+    const receiptNum = document.getElementById('return-receipt-number').value.trim();
+    if (!receiptNum) return;
+
+    try {
+      const btn = document.getElementById('btn-submit-return');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+
+      const result = await window.api.billing.processReturn({
+        originalReceiptNumber: receiptNum,
+        userId: currentUser ? currentUser.id : null,
+      });
+
+      if (result.success) {
+        showToast(`Return successful. Credit Note: ${result.creditNoteNumber}`, 'success');
+        closeModal('modal-process-return');
+        document.getElementById('return-receipt-number').value = '';
+      } else {
+        showToast(result.error || 'Return failed', 'error');
+      }
+      btn.disabled = false;
+      btn.textContent = 'Process Return';
+    } catch (err) {
+      showToast('Connection error', 'error');
+      document.getElementById('btn-submit-return').disabled = false;
+      document.getElementById('btn-submit-return').textContent = 'Process Return';
+    }
+  }
+
   return {
-    init
+    init,
+    processReturnSubmit
   };
 })();
