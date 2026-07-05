@@ -10,6 +10,7 @@ const ProductsModule = (() => {
   const perPage = 20;
   let currentSearch = '';
   let currentCategory = '';
+  let currentStockFilter = '';
 
   function init() {
     if (!initialized) {
@@ -40,6 +41,11 @@ const ProductsModule = (() => {
         </div>
         <select class="form-select" id="products-category-filter" style="width:180px;padding:9px 12px;font-size:13px;">
           <option value="">All Categories</option>
+        </select>
+        <select class="form-select" id="products-stock-filter" style="width:150px;padding:9px 12px;font-size:13px;">
+          <option value="">All Stock</option>
+          <option value="low">Low Stock</option>
+          <option value="out">Out of Stock</option>
         </select>
       </div>
 
@@ -97,6 +103,12 @@ const ProductsModule = (() => {
     // Category filter
     document.getElementById('products-category-filter').addEventListener('change', (e) => {
       currentCategory = e.target.value;
+      currentPage = 1;
+      loadProducts();
+    });
+
+    document.getElementById('products-stock-filter').addEventListener('change', (e) => {
+      currentStockFilter = e.target.value;
       currentPage = 1;
       loadProducts();
     });
@@ -176,6 +188,7 @@ const ProductsModule = (() => {
       const result = await window.api.products.getAll({
         search: currentSearch,
         categoryId: currentCategory ? parseInt(currentCategory) : null,
+        stockFilter: currentStockFilter,
         page: currentPage,
         perPage,
       });
@@ -391,8 +404,17 @@ const ProductsModule = (() => {
     }
   }
 
+  function setStockFilter(val) {
+    currentStockFilter = val;
+    const select = document.getElementById('products-stock-filter');
+    if (select) select.value = val;
+    currentPage = 1;
+    loadProducts();
+  }
+
   return {
     init,
+    setStockFilter,
     _editCat: (id, name, desc) => openCategoryModal({ id, name, description: desc }),
     _deleteCat: async (id) => {
       if (!confirm('Delete this category?')) return;

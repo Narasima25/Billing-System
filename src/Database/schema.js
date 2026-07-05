@@ -398,7 +398,10 @@ function initializeSchema(db) {
   } catch (err) {}
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_active ON suppliers(is_active);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone_number);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);`);
 
   // ─── Seed: Default Admin User ────────────────────────────────────────
   const adminCheck = db.prepare("SELECT COUNT(*) as cnt FROM users WHERE username = 'admin'").get();
@@ -432,9 +435,9 @@ function initializeSchema(db) {
 
   // ─── Seed: Default Settings ──────────────────────────────────────────
   const defaultSettings = {
-    'store_name': 'SKY PET SHOP',
+    'store_name': 'SKY PETS',
     'store_address': '',
-    'store_phone': '',
+    'store_phone': '6385859157',
     'store_gst': '',
     'shop_gstin': '',
     'shop_state_code': '',

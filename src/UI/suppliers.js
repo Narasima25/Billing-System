@@ -101,8 +101,13 @@ const SuppliersModule = (() => {
       const finalPrice = Math.max(0, base - disc);
       document.getElementById('pi-purchase-price').value = finalPrice.toFixed(2);
     };
-    document.getElementById('pi-base-price').addEventListener('input', calcFinalPurchasePrice);
-    document.getElementById('pi-scheme-disc').addEventListener('input', calcFinalPurchasePrice);
+    let calcTimer;
+    const debouncedCalc = () => {
+      clearTimeout(calcTimer);
+      calcTimer = setTimeout(calcFinalPurchasePrice, 200);
+    };
+    document.getElementById('pi-base-price').addEventListener('input', debouncedCalc);
+    document.getElementById('pi-scheme-disc').addEventListener('input', debouncedCalc);
   }
 
   async function loadSuppliers() {
@@ -264,6 +269,18 @@ const SuppliersModule = (() => {
       document.getElementById('pd-supplier').textContent = supplierName;
       document.getElementById('pd-status').textContent = status;
       document.getElementById('pd-total').textContent = formatRupees(totalPaise);
+      
+      const viewAttachBtn = document.getElementById('pd-view-attachment');
+      if (result.purchase && result.purchase.attachment_path) {
+        viewAttachBtn.style.display = 'block';
+        viewAttachBtn.onclick = async () => {
+          const res = await window.api.app.openExternal(result.purchase.attachment_path);
+          if (!res.success) showToast(res.error || 'Failed to open file', 'error');
+        };
+      } else {
+        viewAttachBtn.style.display = 'none';
+        viewAttachBtn.onclick = null;
+      }
       
       const tbody = document.getElementById('pd-items-tbody');
       if (result.items.length === 0) {

@@ -72,7 +72,7 @@ const SettingsModule = (() => {
             <p class="text-sm text-muted mb-16">Configure your shop's details, GST, and UPI.</p>
             <div class="form-group">
               <label class="form-label">Store Name</label>
-              <input type="text" class="form-input" id="set-store-name" placeholder="e.g. SKY PET SHOP">
+              <input type="text" class="form-input" id="set-store-name" placeholder="e.g. SKY PETS">
             </div>
             <div class="form-group">
               <label class="form-label">Store Address</label>
@@ -246,7 +246,7 @@ const SettingsModule = (() => {
       <div class="r-center r-bold" style="font-size:16px;">PRINTER TEST</div>
       <div class="r-line"></div>
       <div class="r-center">If you can read this, your thermal printer is configured correctly.</div>
-      <div class="r-center">🐾 SKY PET SHOP 🐾</div>
+      <div class="r-center">🐾 SKY PETS 🐾</div>
     `;
     window.print();
     showToast('Test print sent', 'info');

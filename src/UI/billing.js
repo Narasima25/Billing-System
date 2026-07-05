@@ -418,9 +418,12 @@ const BillingModule = (() => {
     // Manual Product Search (By Name)
     const manualSearch = document.getElementById('billing-manual-search');
     let manualTimer = null;
+    let manualSelectedIndex = -1;
+
     manualSearch.addEventListener('input', () => {
       clearTimeout(manualTimer);
       manualTimer = setTimeout(async () => {
+        manualSelectedIndex = -1;
         const q = manualSearch.value.trim();
         const resultsDiv = document.getElementById('billing-manual-results');
         if (q.length < 2) {
@@ -433,9 +436,9 @@ const BillingModule = (() => {
         if (products.length === 0) {
           resultsDiv.innerHTML = `<div class="customer-result-item text-muted">No products found</div>`;
         } else {
-          resultsDiv.innerHTML = products.map(p => {
+          resultsDiv.innerHTML = products.map((p, idx) => {
             const isOOS = p.stock_quantity <= 0;
-            return `<div class="customer-result-item" data-barcode="${p.barcode}" style="display:flex; justify-content:space-between; align-items:center; ${isOOS ? 'opacity:0.6;' : ''}">
+            return `<div class="customer-result-item" data-barcode="${p.barcode}" data-index="${idx}" style="display:flex; justify-content:space-between; align-items:center; ${isOOS ? 'opacity:0.6;' : ''}">
                <div>
                  <strong>${p.product_name}</strong> <span class="text-xs text-muted" style="margin-left:4px;">${p.barcode}</span>
                  <div class="text-sm ${isOOS ? 'text-rose' : 'text-green'}" style="margin-top:2px;">Stock: ${p.stock_quantity}</div>
@@ -447,6 +450,40 @@ const BillingModule = (() => {
         resultsDiv.classList.add('show');
       }, 300);
     });
+
+    manualSearch.addEventListener('keydown', (e) => {
+      const resultsDiv = document.getElementById('billing-manual-results');
+      if (!resultsDiv.classList.contains('show')) return;
+      
+      const items = resultsDiv.querySelectorAll('.customer-result-item[data-barcode]');
+      if (items.length === 0) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        manualSelectedIndex = (manualSelectedIndex + 1) % items.length;
+        updateManualSelection(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        manualSelectedIndex = (manualSelectedIndex - 1 + items.length) % items.length;
+        updateManualSelection(items);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (manualSelectedIndex >= 0 && manualSelectedIndex < items.length) {
+          items[manualSelectedIndex].click();
+        }
+      }
+    });
+
+    function updateManualSelection(items) {
+      items.forEach((item, idx) => {
+        if (idx === manualSelectedIndex) {
+          item.style.backgroundColor = 'var(--bg-hover, #f1f5f9)';
+          item.scrollIntoView({ block: 'nearest' });
+        } else {
+          item.style.backgroundColor = '';
+        }
+      });
+    }
 
     document.getElementById('billing-manual-results').addEventListener('click', async (e) => {
       const item = e.target.closest('.customer-result-item');
@@ -488,11 +525,23 @@ const BillingModule = (() => {
       }
     });
 
+    let cartInputTimer = null;
     document.getElementById('billing-cart-items').addEventListener('input', (e) => {
       const idx = parseInt(e.target.closest('[data-index]')?.dataset.index);
       if (isNaN(idx)) return;
 
-      if (e.target.classList.contains('ci-price-input')) {
+      if (e.target.classList.contains('ci-qty-input')) {
+        let newQty = parseInt(e.target.value);
+        const item = cart[idx];
+        if (!isNaN(newQty) && newQty >= 1) {
+          if (item._stockQty && newQty > item._stockQty) {
+            newQty = item._stockQty;
+            e.target.value = newQty;
+            showToast(`Maximum stock reached (${item._stockQty})`, 'warning');
+          }
+          item.quantity = newQty;
+        }
+      } else if (e.target.classList.contains('ci-price-input')) {
         const newPrice = parseFloat(e.target.value);
         if (!isNaN(newPrice) && newPrice >= 0) {
           cart[idx].unitPricePaise = Math.round(newPrice * 100);
@@ -509,10 +558,18 @@ const BillingModule = (() => {
         }
       }
 
-      updateTotals();
       const discountAmount = cart[idx].discountPaise || 0;
       const lineTotal = (cart[idx].unitPricePaise * cart[idx].quantity) - discountAmount;
       e.target.closest('.cart-item').querySelector('.ci-total').textContent = formatRupees(Math.max(0, lineTotal));
+
+      clearTimeout(cartInputTimer);
+      cartInputTimer = setTimeout(updateTotals, 300);
+    });
+
+    document.getElementById('billing-cart-items').addEventListener('change', (e) => {
+      if (e.target.tagName === 'INPUT') {
+        updateCartUI();
+      }
     });
 
     // Keyboard shortcuts
@@ -616,9 +673,9 @@ const BillingModule = (() => {
                   Supplier Purchasing Price: ${formatRupees(item.originalCostPaise)}
                 </div>
               </div>
-              <div class="qty-control" style="margin-right: 12px;">
+              <div class="qty-control" style="margin-right: 12px; display: flex; align-items: center; gap: 4px;">
                 <button class="qty-minus" title="Decrease">−</button>
-                <span class="qty-val">${item.quantity}</span>
+                <input type="number" class="ci-qty-input" value="${item.quantity}" min="1" max="${item._stockQty || ''}" style="width: 45px; text-align: center; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: 600; padding: 4px 0; background: var(--bg-input); color: var(--text-primary); outline: none;">
                 <button class="qty-plus" title="Increase">+</button>
               </div>
               <div style="display: flex; align-items: center; gap: 4px; margin-right: 12px;">
@@ -662,15 +719,22 @@ const BillingModule = (() => {
     cart.forEach(item => {
       const discount = item.discountPaise || 0;
       const lineTotal = Math.max(0, (item.unitPricePaise * item.quantity) - discount);
-      subtotal += lineTotal;
+      
       if (item.gstPercent > 0) {
-        const gstAmount = Math.round(lineTotal * item.gstPercent / 100);
+        // GST is inclusive in MRP. Reverse calculate taxable value.
+        const taxableValue = Math.round((lineTotal * 100) / (100 + item.gstPercent));
+        const itemGst = lineTotal - taxableValue;
+
         if (isInterState) {
-          igst += gstAmount;
+          igst += itemGst;
         } else {
-          cgst += Math.round(gstAmount / 2);
-          sgst += Math.round(gstAmount / 2);
+          const halfGst = Math.round(itemGst / 2);
+          cgst += halfGst;
+          sgst += (itemGst - halfGst);
         }
+        subtotal += taxableValue;
+      } else {
+        subtotal += lineTotal;
       }
     });
 
@@ -912,7 +976,7 @@ const BillingModule = (() => {
     const receiptContainer = document.getElementById('receipt-container');
     const invoiceContainer = document.getElementById('invoice-container');
     const settings = await window.api.settings.getAll();
-    const storeName = settings.store_name || 'SKY PET SHOP';
+    const storeName = settings.store_name || 'SKY PETS';
     const storeAddress = settings.store_address || '';
     const storePhone = settings.store_phone || '';
     const shopGstin = settings.shop_gstin || '';

@@ -57,12 +57,12 @@ const DashboardModule = (() => {
           <span class="stat-value" id="ds-total-inventory">0</span>
           <span class="stat-label">Total Inventory</span>
         </div>
-        <div class="stat-card amber">
+        <div class="stat-card amber" style="cursor:pointer;" onclick="window.navigateTo('products'); setTimeout(() => ProductsModule.setStockFilter('low'), 50)">
           <span class="stat-icon"><i data-lucide="alert-triangle"></i></span>
           <span class="stat-value text-amber" id="ds-low-stock">0</span>
           <span class="stat-label">Low Stock Alerts</span>
         </div>
-        <div class="stat-card rose">
+        <div class="stat-card rose" style="cursor:pointer;" onclick="window.navigateTo('products'); setTimeout(() => ProductsModule.setStockFilter('out'), 50)">
           <span class="stat-icon"><i data-lucide="ban"></i></span>
           <span class="stat-value text-rose" id="ds-out-stock">0</span>
           <span class="stat-label">Out of Stock</span>
@@ -118,10 +118,10 @@ const DashboardModule = (() => {
       let alertsHtml = '';
 
       if (stats.outOfStockCount > 0) {
-        alertsHtml += `<div class="alert-card danger"><span class="alert-icon"><i data-lucide="ban"></i></span><span class="alert-text"><strong>${stats.outOfStockCount}</strong> products are out of stock</span></div>`;
+        alertsHtml += `<div class="alert-card danger" style="cursor:pointer;" onclick="window.navigateTo('products'); setTimeout(() => ProductsModule.setStockFilter('out'), 50)"><span class="alert-icon"><i data-lucide="ban"></i></span><span class="alert-text"><strong>${stats.outOfStockCount}</strong> products are out of stock</span></div>`;
       }
       if (stats.lowStockCount > 0) {
-        alertsHtml += `<div class="alert-card warning"><span class="alert-icon"><i data-lucide="alert-triangle"></i></span><span class="alert-text"><strong>${stats.lowStockCount}</strong> products are below minimum stock level</span></div>`;
+        alertsHtml += `<div class="alert-card warning" style="cursor:pointer;" onclick="window.navigateTo('products'); setTimeout(() => ProductsModule.setStockFilter('low'), 50)"><span class="alert-icon"><i data-lucide="alert-triangle"></i></span><span class="alert-text"><strong>${stats.lowStockCount}</strong> products are below minimum stock level</span></div>`;
       }
       if (stats.expired && stats.expired.length > 0) {
         alertsHtml += `<div class="alert-card danger"><span class="alert-icon"><i data-lucide="alert-circle"></i></span><span class="alert-text"><strong>${stats.expired.length}</strong> expiry items have expired</span></div>`;

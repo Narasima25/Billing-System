@@ -8,6 +8,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
 
+  // ─── App ─────────────────────────────────────────────────────────────
+  app: {
+    getDbPath: () => ipcRenderer.invoke('app:get-db-path'),
+    checkDbLocation: () => ipcRenderer.invoke('app:check-db-location'),
+    openExternal: (filePath) => ipcRenderer.invoke('app:open-external', filePath)
+  },
+
   // ─── Auth ────────────────────────────────────────────────────────────
   auth: {
     login: (credentials) => ipcRenderer.invoke('auth:login', credentials),

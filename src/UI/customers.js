@@ -60,13 +60,17 @@ const CustomersModule = (() => {
 
   function bindEvents() {
     const searchInput = document.getElementById('customers-search');
+    let searchTimer = null;
     searchInput.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase();
-      const filtered = allCustomers.filter(c => 
-        (c.name || '').toLowerCase().includes(q) || 
-        (c.phone_number || '').includes(q)
-      );
-      renderTable(filtered);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const q = e.target.value.toLowerCase();
+        const filtered = allCustomers.filter(c => 
+          (c.name || '').toLowerCase().includes(q) || 
+          (c.phone_number || '').includes(q)
+        );
+        renderTable(filtered);
+      }, 250);
     });
 
     document.getElementById('btn-send-wa-update').addEventListener('click', async () => {
