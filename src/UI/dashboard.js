@@ -98,7 +98,7 @@ const DashboardModule = (() => {
         </div>
       </div>
     `;
-    setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 0);
+    setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons({ node: panel }); }, 0);
   }
 
   async function refresh() {
@@ -149,11 +149,16 @@ const DashboardModule = (() => {
       } else {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted);">No transactions yet</td></tr>';
       }
-      setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 0);
+      setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons({ node: panel }); }, 0);
     } catch (err) {
       console.error('[Dashboard] refresh error:', err);
     }
   }
 
-  return { init, refresh };
+  function stop() {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+
+  return { init, refresh, stop };
 })();

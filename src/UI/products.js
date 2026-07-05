@@ -11,6 +11,7 @@ const ProductsModule = (() => {
   let currentSearch = '';
   let currentCategory = '';
   let currentStockFilter = '';
+  let loadedProducts = [];
 
   function init() {
     if (!initialized) {
@@ -66,7 +67,7 @@ const ProductsModule = (() => {
               </tr>
             </thead>
             <tbody id="products-tbody">
-              <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>
+              <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -114,7 +115,6 @@ const ProductsModule = (() => {
     });
 
     // Save product
-    document.getElementById('btn-save-product').addEventListener('click', saveProduct);
     document.getElementById('form-product').addEventListener('submit', (e) => { e.preventDefault(); saveProduct(); });
 
     // Manage categories
@@ -129,7 +129,6 @@ const ProductsModule = (() => {
     });
 
     // Save category
-    document.getElementById('btn-save-category').addEventListener('click', saveCategory);
     document.getElementById('form-category').addEventListener('submit', (e) => { e.preventDefault(); saveCategory(); });
 
     document.getElementById('btn-add-cat-inline').addEventListener('click', () => {
@@ -193,8 +192,10 @@ const ProductsModule = (() => {
         perPage,
       });
 
+      loadedProducts = result.products;
+
       if (result.products.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted);">
           ${currentSearch ? 'No products match your search' : 'No products yet — add your first product'}</td></tr>`;
         document.getElementById('products-pagination').innerHTML = '';
         return;
@@ -231,7 +232,7 @@ const ProductsModule = (() => {
       renderPagination(result.total, result.page, result.perPage);
     } catch (err) {
       console.error('[Products] load error:', err);
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--accent-rose);">Error loading products</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--accent-rose);">Error loading products</td></tr>';
     }
   }
 
@@ -273,7 +274,6 @@ const ProductsModule = (() => {
     document.getElementById('prod-min-stock').value = product ? product.minimum_stock_level : '5';
     document.getElementById('prod-desc').value = product ? (product.description || '') : '';
 
-    loadDropdowns();
     openModal('modal-product');
     setTimeout(() => document.getElementById(product ? 'prod-name' : 'prod-barcode').focus(), 350);
   }
@@ -327,8 +327,7 @@ const ProductsModule = (() => {
   }
 
   async function editProduct(id) {
-    const result = await window.api.products.getAll({ search: '', page: 1, perPage: 50000 });
-    const product = result.products.find(p => p.id === id);
+    const product = loadedProducts.find(p => p.id === id);
     if (product) {
       openProductModal(product);
     }
@@ -363,7 +362,7 @@ const ProductsModule = (() => {
         <td class="fw-700">${c.name}</td>
         <td class="text-muted">${c.description || '—'}</td>
         <td>
-          <button class="btn btn-ghost btn-sm" onclick="ProductsModule._editCat(${c.id},'${c.name.replace(/'/g,"\\'")}','${(c.description||'').replace(/'/g,"\\'")}')">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="ProductsModule._editCat(${c.id},'${c.name.replace(/'/g,"\\'").replace(/"/g, "&quot;")}','${(c.description||'').replace(/'/g,"\\'").replace(/"/g, "&quot;")}')">✏️</button>
           <button class="btn btn-ghost btn-sm" onclick="ProductsModule._deleteCat(${c.id})">🗑️</button>
         </td>
       </tr>`).join('')

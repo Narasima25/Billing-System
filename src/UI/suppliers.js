@@ -6,6 +6,7 @@
 const SuppliersModule = (() => {
   const panel = document.getElementById('panel-suppliers');
   let initialized = false;
+  let loadedSuppliers = [];
 
   function init() {
     if (!initialized) {
@@ -50,7 +51,7 @@ const SuppliersModule = (() => {
               </tr>
             </thead>
             <tbody id="suppliers-tbody">
-              <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>
+              <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -91,14 +92,14 @@ const SuppliersModule = (() => {
     document.getElementById('show-inactive-suppliers').addEventListener('change', loadSuppliers);
 
     document.getElementById('btn-save-purchase-item').addEventListener('click', () => addPurchaseItemSubmit());
-    document.getElementById('btn-save-purchase').addEventListener('click', () => savePurchase(false));
     document.getElementById('btn-draft-purchase').addEventListener('click', () => savePurchase(true));
     document.getElementById('form-add-purchase').addEventListener('submit', (e) => { e.preventDefault(); savePurchase(false); });
 
     const calcFinalPurchasePrice = () => {
       const base = parseFloat(document.getElementById('pi-base-price').value) || 0;
       const disc = parseFloat(document.getElementById('pi-scheme-disc').value) || 0;
-      const finalPrice = Math.max(0, base - disc);
+      const qty = parseInt(document.getElementById('pi-qty').value) || 1;
+      const finalPrice = Math.max(0, (base * qty) - disc);
       document.getElementById('pi-purchase-price').value = finalPrice.toFixed(2);
     };
     let calcTimer;
@@ -108,6 +109,7 @@ const SuppliersModule = (() => {
     };
     document.getElementById('pi-base-price').addEventListener('input', debouncedCalc);
     document.getElementById('pi-scheme-disc').addEventListener('input', debouncedCalc);
+    document.getElementById('pi-qty').addEventListener('input', debouncedCalc);
   }
 
   async function loadSuppliers() {
@@ -115,8 +117,9 @@ const SuppliersModule = (() => {
     const includeInactive = document.getElementById('show-inactive-suppliers')?.checked || false;
     try {
       const suppliers = await window.api.suppliers.getAll({ includeInactive });
+      loadedSuppliers = suppliers;
       if (suppliers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">No suppliers yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">No suppliers yet</td></tr>';
         return;
       }
       tbody.innerHTML = suppliers.map(s => `<tr>
@@ -141,7 +144,7 @@ const SuppliersModule = (() => {
         </td>
       </tr>`).join('');
     } catch (err) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--accent-rose);">Error loading suppliers</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--accent-rose);">Error loading suppliers</td></tr>';
     }
   }
 
@@ -209,8 +212,7 @@ const SuppliersModule = (() => {
   }
 
   async function editSupplier(id) {
-    const suppliers = await window.api.suppliers.getAll();
-    const supplier = suppliers.find(s => s.id === id);
+    const supplier = loadedSuppliers.find(s => s.id === id);
     if (supplier) openSupplierModal(supplier);
   }
 
@@ -244,14 +246,14 @@ const SuppliersModule = (() => {
     } else {
       div.innerHTML = `<div class="data-table-wrap"><table class="data-table"><thead><tr>
         <th>Invoice #</th><th>Total</th><th>GST Paid</th><th>Items</th><th>Date</th>
-      </tr></thead><tbody>${purchases.map(p => `
-        <tr style="cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='var(--bg-alt)'" onmouseout="this.style.background=''" onclick="viewPurchaseDetails(${p.id}, '${name.replace(/'/g, "\\'")}', '${p.invoice_number || ''}', '${p.created_at}', ${p.total_paise}, '${p.status}')">
+      </tr></thead><tbody>` + purchases.map(p => `
+        <tr style="cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='var(--bg-alt)'" onmouseout="this.style.background=''" onclick="SuppliersModule.viewPurchaseDetails(${p.id}, '${name.replace(/'/g, "\\'").replace(/"/g, "&quot;")}', '${(p.invoice_number || '').replace(/'/g, "\\'").replace(/"/g, "&quot;")}', '${p.created_at}', ${p.total_paise}, '${p.status}')">
         <td class="fw-700 font-mono text-sm">${p.invoice_number || '—'}</td>
         <td class="fw-700 text-teal">${formatRupees(p.total_paise)}</td>
         <td class="text-sm">${formatRupees(p.gst_paid_paise || 0)}</td>
         <td>${p.item_count}</td>
         <td class="text-sm text-muted">${formatDate(p.created_at)}</td>
-      </tr>`).join('')}</tbody></table></div>`;
+      </tr>`).join('') + `</tbody></table></div>`;
     }
     openModal('modal-supplier-history');
   }
@@ -369,7 +371,7 @@ const SuppliersModule = (() => {
         const invField = document.getElementById('purchase-invoice-number');
         if (invField) invField.focus();
         // Re-render Lucide icons inside modal
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (typeof lucide !== 'undefined') lucide.createIcons({ node: document.getElementById('modal-add-purchase') });
       }, 350);
     } catch (err) {
       alert("Error opening modal: " + err.message + "\n" + err.stack);
@@ -390,7 +392,7 @@ const SuppliersModule = (() => {
         document.getElementById('upload-filename').textContent = result.fileName;
         document.getElementById('upload-empty-state').style.display = 'none';
         document.getElementById('upload-attached-state').style.display = '';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (typeof lucide !== 'undefined') lucide.createIcons({ node: document.getElementById('purchase-upload-zone') });
         showToast('Document attached: ' + result.fileName, 'success');
       }
     } catch (err) {
@@ -418,8 +420,9 @@ const SuppliersModule = (() => {
         document.getElementById('pi-category').value = product.category_id || '';
         document.getElementById('pi-selling-price').value = (product.selling_price_paise / 100).toFixed(2);
         document.getElementById('pi-base-price').value = (product.base_price_paise / 100).toFixed(2);
-        document.getElementById('pi-scheme-disc').value = (product.scheme_discount_paise / 100).toFixed(2);
-        document.getElementById('pi-purchase-price').value = (product.purchase_price_paise / 100).toFixed(2);
+        const qty = parseInt(document.getElementById('pi-qty').value) || 1;
+        document.getElementById('pi-scheme-disc').value = ((product.scheme_discount_paise / 100) * qty).toFixed(2);
+        document.getElementById('pi-purchase-price').value = ((product.purchase_price_paise / 100) * qty).toFixed(2);
         
         if (product.gst_percent !== undefined && product.gst_percent !== null) {
           const halfGst = product.gst_percent / 2;
@@ -456,7 +459,7 @@ const SuppliersModule = (() => {
     const freeQty = parseInt(document.getElementById('pi-free-qty').value) || 0;
     const basePrice = parseFloat(document.getElementById('pi-base-price').value) || 0;
     const schemeDisc = parseFloat(document.getElementById('pi-scheme-disc').value) || 0;
-    const purchasePrice = parseFloat(document.getElementById('pi-purchase-price').value) || 0;
+    const purchasePrice = qty > 0 ? Math.max(0, (basePrice * qty - schemeDisc) / qty) : 0;
     const sellingPrice = parseFloat(document.getElementById('pi-selling-price').value) || 0;
     const cgst = parseFloat(document.getElementById('pi-cgst').value) || 0;
     const sgst = parseFloat(document.getElementById('pi-sgst').value) || 0;
@@ -541,7 +544,7 @@ const SuppliersModule = (() => {
     }).join('');
 
     if (pendingPurchaseItems.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted);">No items added yet. Click "+ Add Product" to begin.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-muted);">No items added yet. Click "+ Add Product" to begin.</td></tr>`;
     }
 
     document.getElementById('purchase-summary-items').textContent = totalItems;
@@ -560,7 +563,6 @@ const SuppliersModule = (() => {
     const dueDate = document.getElementById('purchase-due-date').value;
     const attachmentPath = document.getElementById('purchase-attachment').value.trim();
 
-    if (!invoiceNumber) { showToast('Invoice number is required', 'warning'); return; }
     if (pendingPurchaseItems.length === 0) { showToast('Please add at least one product', 'warning'); return; }
 
     const btn = document.getElementById('btn-save-purchase');
@@ -606,6 +608,7 @@ const SuppliersModule = (() => {
 
   return {
     init,
-    addPurchaseItemSubmit
+    addPurchaseItemSubmit,
+    viewPurchaseDetails
   };
 })();

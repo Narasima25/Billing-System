@@ -6,6 +6,7 @@
 const SettingsModule = (() => {
   const panel = document.getElementById('panel-settings');
   let initialized = false;
+  let loadedUsers = [];
 
   function init() {
     if (!initialized) {
@@ -175,7 +176,6 @@ const SettingsModule = (() => {
     });
 
     // User form save
-    document.getElementById('btn-save-user').addEventListener('click', saveUser);
     document.getElementById('form-user').addEventListener('submit', (e) => { e.preventDefault(); saveUser(); });
   }
 
@@ -313,6 +313,7 @@ const SettingsModule = (() => {
     if (!div) return;
     try {
       const users = await window.api.auth.getUsers();
+      loadedUsers = users;
       if (users.length === 0) {
         div.innerHTML = '<p class="text-muted text-sm">No users</p>';
         return;
@@ -382,8 +383,7 @@ const SettingsModule = (() => {
   return {
     init,
     _editUser: async (id) => {
-      const users = await window.api.auth.getUsers();
-      const user = users.find(u => u.id === id);
+      const user = loadedUsers.find(u => u.id === id);
       if (user) openUserModal(user);
     },
   };

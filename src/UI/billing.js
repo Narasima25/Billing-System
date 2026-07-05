@@ -12,6 +12,7 @@ const BillingModule = (() => {
   let scanner;
   let selectedPaymentMode = 'cash';
   let discountMode = 'amount';
+  let currentGrandTotalPaise = 0;
 
   function init() {
     if (!initialized) {
@@ -194,6 +195,11 @@ const BillingModule = (() => {
                 <span class="pm-icon"><i data-lucide="credit-card"></i></span> Card
               </button>
             </div>
+            
+            <div id="live-upi-qr-container" style="display:none; text-align:center; margin-top: 16px; padding: 12px; background: rgba(124,58,237,0.05); border: 2px dashed var(--accent-violet); border-radius: 8px;">
+              <div style="font-size: 13px; font-weight: 800; color: var(--accent-violet); margin-bottom: 8px;">Scan to Pay ₹<span id="live-upi-amt">0.00</span></div>
+              <canvas id="live-upi-qr-canvas"></canvas>
+            </div>
           </div>
 
           <!-- Actions -->
@@ -272,6 +278,7 @@ const BillingModule = (() => {
         panel.querySelectorAll('.payment-mode-btn').forEach(b => b.classList.remove('active'));
         pmBtn.classList.add('active');
         selectedPaymentMode = pmBtn.dataset.mode;
+        updateLiveQR();
       }
     });
 
@@ -702,7 +709,10 @@ const BillingModule = (() => {
             </div>
           </div>`;
       }).join('');
-      if (window.lucide) window.lucide.createIcons();
+      if (window.lucide) {
+        const cartEl = document.getElementById('billing-cart-items');
+        if (cartEl) window.lucide.createIcons({ node: cartEl });
+      }
     }
 
     updateTotals();
@@ -797,6 +807,40 @@ const BillingModule = (() => {
       document.getElementById('billing-igst').textContent = formatRupees(igst);
     }
     document.getElementById('billing-grand-total').textContent = formatRupees(Math.max(0, grandTotal));
+    
+    currentGrandTotalPaise = Math.max(0, grandTotal);
+    updateLiveQR();
+  }
+  
+  async function updateLiveQR() {
+    const qrContainer = document.getElementById('live-upi-qr-container');
+    const amtSpan = document.getElementById('live-upi-amt');
+    
+    if (selectedPaymentMode === 'upi' && currentGrandTotalPaise > 0) {
+      try {
+        const shopUpiId = await window.api.settings.get('shop_upi_id');
+        const storeName = await window.api.settings.get('store_name') || 'SKY PETS';
+        
+        if (shopUpiId && window.QRious) {
+          qrContainer.style.display = 'block';
+          amtSpan.textContent = (currentGrandTotalPaise / 100).toFixed(2);
+          
+          const upiString = `upi://pay?pa=${shopUpiId}&pn=${encodeURIComponent(storeName)}&am=${(currentGrandTotalPaise / 100).toFixed(2)}&cu=INR`;
+          new QRious({
+            element: document.getElementById('live-upi-qr-canvas'),
+            value: upiString,
+            size: 150,
+            level: 'H'
+          });
+        } else {
+          qrContainer.style.display = 'none';
+        }
+      } catch (err) {
+        qrContainer.style.display = 'none';
+      }
+    } else {
+      qrContainer.style.display = 'none';
+    }
   }
 
   async function handleCheckout() {
@@ -985,6 +1029,7 @@ const BillingModule = (() => {
     const now = new Date();
     const dateStr = formatDate(now.toISOString());
 
+
     if (saleResult.isB2B) {
       document.body.classList.add('print-b2b');
 
@@ -1162,42 +1207,7 @@ const BillingModule = (() => {
 
     }
 
-    // UPI QR Button Handler
-    const btnGenerateQr = document.getElementById('btn-generate-qr');
-    if (btnGenerateQr) {
-      if (shopUpiId && selectedPaymentMode === 'upi') {
-        btnGenerateQr.style.display = 'inline-flex';
-        btnGenerateQr.onclick = () => {
-          const confirmContent = document.getElementById('checkout-confirm-content');
-          let qrWrap = document.getElementById('inline-upi-qr');
-          if (!qrWrap) {
-            const upiString = `upi://pay?pa=${shopUpiId}&pn=${encodeURIComponent(storeName)}&am=${(saleResult.grandTotalPaise / 100).toFixed(2)}&cu=INR`;
-            confirmContent.insertAdjacentHTML('beforeend', `
-              <div id="inline-upi-qr" style="margin-top:16px; padding:16px; border:2px dashed var(--accent-violet); border-radius:8px; display:inline-block; background:rgba(124,58,237,0.05); text-align:center;">
-                <div style="font-size:12px; font-weight:800; margin-bottom:8px; color:var(--accent-violet);">Scan to Pay ₹${(saleResult.grandTotalPaise / 100).toFixed(2)}</div>
-                <canvas id="inline-qr-canvas"></canvas>
-                <div style="font-size:11px; margin-top:8px; color:var(--text-muted); font-weight:600;">${shopUpiId}</div>
-              </div>
-            `);
-            setTimeout(() => {
-              if (window.QRious) {
-                new QRious({
-                  element: document.getElementById('inline-qr-canvas'),
-                  value: upiString,
-                  size: 180,
-                  level: 'H'
-                });
-              }
-            }, 50);
-            btnGenerateQr.style.display = 'none'; // Hide button once generated
-          }
-        };
-        // Auto-generate the QR code so the user doesn't have to click
-        setTimeout(() => btnGenerateQr.click(), 50);
-      } else {
-        btnGenerateQr.style.display = 'none';
-      }
-    }
+
 
     // Print button handler
     document.getElementById('btn-print-receipt').onclick = () => {

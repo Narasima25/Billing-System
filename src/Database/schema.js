@@ -22,6 +22,7 @@ function initializeSchema(db) {
   db.exec('PRAGMA synchronous = NORMAL;');
   db.exec('PRAGMA cache_size = -64000;');
   db.exec('PRAGMA temp_store = MEMORY;');
+  db.exec('PRAGMA mmap_size = 268435456;');
   db.exec('PRAGMA foreign_keys = ON;');
 
   // ─── 1. Users Table ──────────────────────────────────────────────────

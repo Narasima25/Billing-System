@@ -353,9 +353,8 @@
                 style="background:var(--bg-surface); font-weight:600;">
             </div>
             <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:12px;">Invoice Number *</label>
-              <input type="text" class="form-input" id="purchase-invoice-number" placeholder="e.g. INV-2026-001"
-                required>
+              <label class="form-label" style="font-size:12px;">Invoice Number</label>
+              <input type="text" class="form-input" id="purchase-invoice-number" placeholder="e.g. INV-2026-001">
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;">Supplier GSTIN</label>
@@ -590,7 +589,7 @@
             <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-purchase')">Cancel</button>
             <button type="button" class="btn btn-secondary" id="btn-draft-purchase"
               style="border-color:var(--accent-amber); color:var(--accent-amber);">📝 Draft</button>
-            <button type="button" class="btn btn-primary" id="btn-save-purchase" style="padding: 10px 24px;">✓ Save
+            <button type="submit" form="form-add-purchase" class="btn btn-primary" id="btn-save-purchase" style="padding: 10px 24px;">✓ Save
               Purchase</button>
           </div>
         </div>
@@ -782,7 +781,7 @@
       </div>
       <div class="modal-footer" style="justify-content: center;">
         <button class="btn btn-secondary" onclick="closeModal('modal-checkout-confirm')">Close</button>
-        <button class="btn btn-secondary" id="btn-generate-qr" style="display:none; border-color:var(--accent-violet); color:var(--accent-violet);"><i data-lucide="qr-code"></i> UPI QR</button>
+
         <button class="btn btn-secondary" id="btn-preview-receipt"><i data-lucide="eye"></i> Preview</button>
         <button class="btn btn-primary" id="btn-print-receipt"><i data-lucide="printer"></i> Print</button>
       </div>
@@ -974,11 +973,15 @@
     window.showToast = function (message, type = 'info') {
       const icons = { success: '<i data-lucide="check-circle"></i>', error: '<i data-lucide="x-circle"></i>', info: '<i data-lucide="info"></i>', warning: '<i data-lucide="alert-triangle"></i>' };
       const container = document.getElementById('toast-container');
+      // Limit max visible toasts to prevent DOM bloat during rapid scanning
+      while (container.children.length >= 5) {
+        container.firstChild.remove();
+      }
       const toast = document.createElement('div');
       toast.className = 'toast ' + type;
       toast.innerHTML = '<span class="toast-icon">' + (icons[type] || '<i data-lucide="info"></i>') + '</span> ' + message;
       container.appendChild(toast);
-      setTimeout(() => toast.remove(), 3100);
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 3100);
     };
 
     // ─── Modal Helpers ──────────────────────────────────────────────────────
@@ -1050,6 +1053,7 @@
     });
 
     // ─── Initialize App After Login ─────────────────────────────────────────
+    let clockInterval = null;
     function initApp() {
       // Update sidebar user info
       document.getElementById('sidebar-avatar').textContent = currentUser.display_name.charAt(0).toUpperCase();
@@ -1094,7 +1098,8 @@
 
       // Start header clock
       updateClock();
-      setInterval(updateClock, 30000);
+      if (clockInterval) clearInterval(clockInterval);
+      clockInterval = setInterval(updateClock, 30000);
     }
 
     // ─── Navigation ─────────────────────────────────────────────────────────
@@ -1127,6 +1132,11 @@
       document.querySelectorAll('.module-panel').forEach(p => p.classList.remove('active'));
       const panel = document.getElementById('panel-' + module);
       if (panel) panel.classList.add('active');
+
+      // Stop dashboard timer when navigating away to prevent background CPU waste
+      if (module !== 'dashboard' && typeof DashboardModule !== 'undefined' && DashboardModule.stop) {
+        DashboardModule.stop();
+      }
 
       // Trigger module init/refresh
       switch (module) {

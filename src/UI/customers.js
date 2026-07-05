@@ -101,7 +101,7 @@ const CustomersModule = (() => {
       } finally {
         btn.disabled = false;
         btn.innerHTML = '<i data-lucide="send"></i> Send Message';
-        lucide.createIcons();
+        lucide.createIcons({ node: btn });
       }
     });
 
@@ -177,7 +177,7 @@ const CustomersModule = (() => {
       } finally {
         btn.disabled = false;
         btn.innerHTML = '<i data-lucide="send"></i> Send Broadcast';
-        lucide.createIcons();
+        lucide.createIcons({ node: btn });
       }
     });
   }
@@ -215,13 +215,13 @@ const CustomersModule = (() => {
           <button class="btn btn-ghost btn-sm" onclick="CustomersModule.viewHistory('${c.phone_number}')" title="View History">
             <i data-lucide="history"></i> History
           </button>
-          <button class="btn btn-ghost btn-sm" onclick="CustomersModule.openWhatsAppUpdate('${phone}', '${name.replace(/'/g, "\\'")}')" title="Send WhatsApp Update">
+          <button class="btn btn-ghost btn-sm" onclick="CustomersModule.openWhatsAppUpdate('${phone}', '${name.replace(/'/g, "\\'").replace(/"/g, "&quot;")}')" title="Send WhatsApp Update">
             <i data-lucide="message-circle"></i> Message
           </button>
         </td>
       </tr>
     `}).join('');
-    lucide.createIcons();
+    lucide.createIcons({ node: tbody });
   }
 
   async function viewHistory(phone) {

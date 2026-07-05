@@ -6,8 +6,14 @@
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 
-// Disable hardware acceleration to prevent UI lag/freezing on older systems (like i3 processors)
-app.disableHardwareAcceleration();
+// Instead of completely disabling hardware acceleration (which forces CPU rendering and can cause lag),
+// we apply specific command line switches to prevent throttling and freezing.
+// --- LOW-END DEVICE OPTIMIZATIONS (No GPU, 4GB RAM, Low CPU) ---
+// Only keeping safe optimizations, removed flags that cause GC thrashing and CPU rendering lag over time.
+app.commandLine.appendSwitch('disable-smooth-scrolling'); // Saves CPU on scrolling
+app.commandLine.appendSwitch('wm-window-animations-disabled'); // Disables window animations
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+// app.commandLine.appendSwitch('disable-gpu-compositing'); // Uncomment if glitches still occur
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -51,8 +57,20 @@ function runSql(sql, params = []) {
 
 function getHardwareId() {
   try {
-    const output = execSync('powershell.exe -Command "(Get-CimInstance -Class Win32_ComputerSystemProduct).UUID"');
-    return output.toString().trim();
+    if (process.platform === 'win32') {
+      const output = execSync('powershell.exe -Command "(Get-CimInstance -Class Win32_ComputerSystemProduct).UUID"');
+      return output.toString().trim();
+    } else if (process.platform === 'linux') {
+      if (fs.existsSync('/etc/machine-id')) {
+        return fs.readFileSync('/etc/machine-id', 'utf8').trim();
+      } else if (fs.existsSync('/var/lib/dbus/machine-id')) {
+        return fs.readFileSync('/var/lib/dbus/machine-id', 'utf8').trim();
+      }
+    } else if (process.platform === 'darwin') {
+      const output = execSync('ioreg -rd1 -c IOPlatformExpertDevice | awk \'/IOPlatformUUID/ { split($0, line, "\\""); printf("%s\\n", line[4]); }\'');
+      return output.toString().trim();
+    }
+    return 'UNKNOWN-PLATFORM-ID';
   } catch (err) {
     console.error('Failed to get hardware ID:', err);
     return 'UNKNOWN-HARDWARE-ID';
@@ -61,7 +79,21 @@ function getHardwareId() {
 
 // ─── License Checking ───────────────────────────────────────────────────────
 function checkLicense() {
-  return true;
+  try {
+    const hardwareId = getHardwareId();
+    const secretSalt = "BillingPosSecretKey2026!";
+    const currentMachineHash = crypto.createHash('sha256')
+      .update(hardwareId + secretSalt)
+      .digest('hex');
+
+    const licensePath = path.join(app.getPath('userData'), 'license.key');
+    if (!fs.existsSync(licensePath)) return false;
+    
+    const storedKey = fs.readFileSync(licensePath, 'utf8').trim();
+    return storedKey === currentMachineHash;
+  } catch (err) {
+    return false;
+  }
 }
 // ─── Window Creation ────────────────────────────────────────────────────────
 function createWindow() {
@@ -81,6 +113,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false, // Fixes severe typing lag on Windows (especially with low-end CPUs)
+      backgroundThrottling: false, // Prevents lag when window is minimized or occluded
     },
   });
 
@@ -376,7 +409,7 @@ ipcMain.handle('products:get-all', async (_e, { search, categoryId, supplierId, 
     if (stockFilter === 'out') {
       sql += " AND p.stock_quantity <= 0";
     } else if (stockFilter === 'low') {
-      sql += " AND p.stock_quantity > 0 AND p.stock_quantity <= p.min_stock_level";
+      sql += " AND p.stock_quantity > 0 AND p.stock_quantity <= p.minimum_stock_level";
     }
 
 

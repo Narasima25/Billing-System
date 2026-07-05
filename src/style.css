@@ -2429,3 +2429,9 @@ body.dark ::-webkit-scrollbar-thumb:hover {
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* --- LOW-END DEVICE CPU OPTIMIZATION --- */
+* {
+  transition: none !important;
+  animation: none !important;
+}
