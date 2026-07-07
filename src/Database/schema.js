@@ -365,7 +365,10 @@ function initializeSchema(db) {
     db.exec(`ALTER TABLE purchase_items ADD COLUMN scheme_discount_paise INTEGER DEFAULT 0;`);
   } catch(e) { /* Column might already exist */ }
 
-  // ─── Phase 4: Customer Loyalty Migrations ────────────────────────────
+  // ─── Phase 4: Customer Loyalty & Round Off Migrations ────────────────
+  try {
+    db.exec(`ALTER TABLE purchases ADD COLUMN round_off_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
   try {
     db.exec(`ALTER TABLE sales ADD COLUMN customer_phone TEXT DEFAULT '';`);
   } catch(e) { /* Column might already exist */ }

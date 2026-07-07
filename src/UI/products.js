@@ -327,6 +327,7 @@ const ProductsModule = (() => {
     document.getElementById('prod-purchase-price').value = product ? (product.purchase_price_paise / 100).toFixed(2) : '';
     document.getElementById('prod-selling-price').value = product ? (product.selling_price_paise / 100).toFixed(2) : '';
     document.getElementById('prod-gst').value = product ? (product.gst_percent || '') : '18';
+    document.getElementById('prod-base-price').dispatchEvent(new Event('input'));
     document.getElementById('prod-hsn').value = product ? (product.hsn_code || '') : '';
     document.getElementById('prod-stock').value = product ? product.stock_quantity : '0';
     document.getElementById('prod-stock').disabled = false;

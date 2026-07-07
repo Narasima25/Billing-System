@@ -20,6 +20,10 @@ const { autoUpdater } = require('electron-updater');
 
 autoUpdater.on('update-available', () => {
   console.log('Update available.');
+  if (mainWindow) mainWindow.webContents.send('updater:available');
+});
+autoUpdater.on('download-progress', (progressObj) => {
+  if (mainWindow) mainWindow.webContents.send('updater:progress', progressObj);
 });
 autoUpdater.on('update-downloaded', () => {
   console.log('Update downloaded. Prompting user to install.');
@@ -110,10 +114,10 @@ function checkLicense() {
     return false;
   }
 }
-// ─── Window Creation ────────────────────────────────────────────────────────
+let mainWindow;
 function createWindow() {
   const isLicensed = checkLicense();
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1366,
     height: 900,
     minWidth: 1100,
@@ -133,15 +137,15 @@ function createWindow() {
   });
 
   if (isLicensed) {
-    win.loadFile(path.join(__dirname, 'index.html'));
-    win.maximize();
+    mainWindow.loadFile(path.join(__dirname, 'index.html'));
+    mainWindow.maximize();
   } else {
     // Load your locked alert screen
-    win.loadFile(path.join(__dirname, 'locked.html'));
+    mainWindow.loadFile(path.join(__dirname, 'locked.html'));
 
     // Inject the client's Hardware ID dynamically into the locked.html screen
-    win.webContents.on('did-finish-load', () => {
-      win.webContents.executeJavaScript(`
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow.webContents.executeJavaScript(`
         if(document.getElementById('machine-id')) {
             document.getElementById('machine-id').innerText = "${getHardwareId()}";
         }
@@ -287,10 +291,7 @@ ipcMain.handle('categories:update', async (_e, { id, name, description }) => {
 
 ipcMain.handle('categories:delete', async (_e, id) => {
   try {
-    const products = queryOne("SELECT COUNT(*) as cnt FROM products WHERE category_id = ?", [id]);
-    if (products && products.cnt > 0) {
-      return { success: false, error: `Cannot delete: ${products.cnt} products use this category` };
-    }
+    runSql("UPDATE products SET category_id = NULL WHERE category_id = ?", [id]);
     runSql("DELETE FROM categories WHERE id = ?", [id]);
     return { success: true };
   } catch (err) {
@@ -346,16 +347,12 @@ ipcMain.handle('suppliers:delete', async (_e, id) => {
 
 ipcMain.handle('suppliers:hard-delete', async (_e, id) => {
   try {
-    const activeProdCount = queryOne("SELECT COUNT(*) as cnt FROM products WHERE supplier_id = ? AND is_active = 1", [id]);
-    if (activeProdCount && activeProdCount.cnt > 0) {
-      return { success: false, error: `Cannot permanently delete: Supplier is linked to ${activeProdCount.cnt} active products.` };
-    }
-    
-    runSql("UPDATE products SET supplier_id = NULL WHERE supplier_id = ? AND is_active = 0", [id]);
+    runSql("UPDATE products SET supplier_id = NULL WHERE supplier_id = ?", [id]);
 
     const purCount = queryOne("SELECT COUNT(*) as cnt FROM purchases WHERE supplier_id = ?", [id]);
     if (purCount && purCount.cnt > 0) {
-      return { success: false, error: `Cannot permanently delete: Supplier has ${purCount.cnt} purchase records.` };
+      runSql("UPDATE suppliers SET contact_person = '', mobile = '', email = '', gst_number = '', address = '', is_active = 0 WHERE id = ?", [id]);
+      return { success: true };
     }
 
     runSql("DELETE FROM suppliers WHERE id = ?", [id]);
@@ -537,7 +534,7 @@ ipcMain.handle('products:update', async (_e, data) => {
       const diff = newStock - oldStock;
       
       if (diff !== 0) {
-        const type = diff > 0 ? 'add' : 'remove';
+        const type = diff > 0 ? 'add' : 'reduce';
         runSql(
           "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, ?, ?, 'Direct Edit')",
           [data.id, type, Math.abs(diff)]
@@ -1130,7 +1127,7 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, use
 
 // ─── PURCHASES ───────────────────────────────────────────────────────────────
 
-ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceNumber, items, notes, gstPaidPaise, status, amountPaidPaise, dueDate, attachmentPath, draftId }) => {
+ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceNumber, items, notes, gstPaidPaise, roundOffPaise, explicitTotalPaise, status, amountPaidPaise, dueDate, attachmentPath, draftId }) => {
   try {
     const purchaseTransaction = db.transaction(() => {
       if (draftId) {
@@ -1139,14 +1136,20 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
       }
 
       let totalPaise = 0;
-      for (const item of items) {
-        if (item.explicitLineTotalPaise !== undefined) {
-          totalPaise += item.explicitLineTotalPaise;
-        } else if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
-          totalPaise += Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
-        } else {
-          totalPaise += item.purchasePricePaise * item.quantity;
+      if (explicitTotalPaise !== undefined && explicitTotalPaise !== null) {
+        totalPaise = explicitTotalPaise;
+      } else {
+        for (const item of items) {
+          if (item.explicitLineTotalPaise !== undefined) {
+            totalPaise += item.explicitLineTotalPaise;
+          } else if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
+            totalPaise += Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
+          } else {
+            totalPaise += item.purchasePricePaise * item.quantity;
+          }
         }
+        totalPaise += (gstPaidPaise || 0);
+        totalPaise += (roundOffPaise || 0);
       }
 
       const pStatus = status || 'Paid';
@@ -1156,8 +1159,8 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
 
       // Insert Purchase Header
       const { lastInsertRowid: purchaseId } = db.prepare(
-        "INSERT INTO purchases (supplier_id, supplier_gstin, invoice_number, total_paise, gst_paid_paise, notes, status, amount_paid_paise, due_date, attachment_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-      ).run(supplierId, supplierGstin || '', invoiceNumber || '', totalPaise, gstPaidPaise || 0, notes || '', pStatus, pAmountPaid, pDueDate, pAttachment);
+        "INSERT INTO purchases (supplier_id, supplier_gstin, invoice_number, total_paise, gst_paid_paise, round_off_paise, notes, status, amount_paid_paise, due_date, attachment_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(supplierId, supplierGstin || '', invoiceNumber || '', totalPaise, gstPaidPaise || 0, roundOffPaise || 0, notes || '', pStatus, pAmountPaid, pDueDate, pAttachment);
 
       for (const item of items) {
         let productId;
@@ -1191,7 +1194,9 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
         const freeQuantity = parseInt(item.freeQuantity) || 0;
         const totalQuantityToStock = item.quantity + freeQuantity;
         let lineTotal = 0;
-        if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
+        if (item.explicitLineTotalPaise !== undefined) {
+          lineTotal = item.explicitLineTotalPaise;
+        } else if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
           lineTotal = Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
         } else {
           lineTotal = item.purchasePricePaise * item.quantity;
@@ -1216,12 +1221,14 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
           );
 
           // Create batch
+          const batchNo = item.batchNumber || ('P-' + (invoiceNumber || purchaseId) + '-' + Date.now().toString().slice(-4));
+          const expDate = item.expiryDate || '';
           db.prepare(
             "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)"
           ).run(
             productId,
-            'P-' + (invoiceNumber || purchaseId) + '-' + Date.now().toString().slice(-4),
-            '',
+            batchNo,
+            expDate,
             totalQuantityToStock,
             item.purchasePricePaise,
             item.sellingPricePaise
@@ -1236,6 +1243,51 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
     return { success: true, purchaseId: pId };
   } catch (err) {
     console.error('[IPC] purchases:add error:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('purchases:delete', async (_e, purchaseId) => {
+  try {
+    const purchaseTransaction = db.transaction(() => {
+      const purchase = db.prepare("SELECT * FROM purchases WHERE id = ?").get(purchaseId);
+      if (!purchase) return;
+
+      if (purchase.status !== 'Draft') {
+        const items = db.prepare("SELECT * FROM purchase_items WHERE purchase_id = ?").all(purchaseId);
+        const invNum = purchase.invoice_number || purchaseId;
+
+        for (const item of items) {
+          const totalQty = item.quantity + (item.free_quantity || 0);
+          
+          if (totalQty > 0) {
+            // Decrease inventory
+            db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
+              totalQty, item.product_id
+            );
+
+            // Log adjustment
+            db.prepare(
+              "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'reduce', ?, ?)"
+            ).run(
+              item.product_id, totalQty, `Purchase Deleted: ${invNum}`
+            );
+          }
+        }
+
+        // Remove batches associated with this purchase
+        db.prepare("DELETE FROM product_batches WHERE batch_number LIKE ?").run(`P-${invNum}-%`);
+      }
+
+      // Delete items and purchase
+      db.prepare("DELETE FROM purchase_items WHERE purchase_id = ?").run(purchaseId);
+      db.prepare("DELETE FROM purchases WHERE id = ?").run(purchaseId);
+    });
+
+    purchaseTransaction();
+    return { success: true };
+  } catch (err) {
+    console.error('purchases:delete error:', err);
     return { success: false, error: err.message };
   }
 });

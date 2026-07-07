@@ -364,53 +364,17 @@
           </div>
         </div>
 
-        <!-- ── Section: Payment & Attachment ── -->
+        <!-- ── Section: Invoice Date ── -->
         <div style="margin-bottom: 20px;">
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
             <span
               style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">2</span>
-            <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Payment & Documents</span>
+            <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Invoice Date</span>
           </div>
-          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px;">
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:12px;">Payment Status *</label>
-              <select class="form-select" id="purchase-status">
-                <option value="Paid">✅ Paid</option>
-                <option value="Partially Paid">⏳ Partially Paid</option>
-                <option value="Credit/Pending">🔴 Credit/Pending</option>
-              </select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:12px;">Amount Paid (₹)</label>
-              <input type="number" class="form-input" id="purchase-amount-paid" step="0.01" min="0" placeholder="0.00">
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:12px;">Due Date</label>
-              <input type="date" class="form-input" id="purchase-due-date">
-            </div>
-          </div>
-
-          <!-- File Upload Zone -->
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label" style="font-size:12px;">Bill / Invoice Attachment</label>
-            <input type="hidden" id="purchase-attachment" value="">
-            <div class="file-upload-zone" id="purchase-upload-zone">
-              <div class="file-upload-empty" id="upload-empty-state">
-                <div class="file-upload-icon"><i data-lucide="upload-cloud"></i></div>
-                <div class="file-upload-text">Click to upload bill document</div>
-                <div class="file-upload-hint">PDF, JPG, PNG, DOCX, XLSX supported</div>
-              </div>
-              <div class="file-upload-attached" id="upload-attached-state" style="display:none;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                  <span class="file-upload-file-icon"><i data-lucide="file-check"></i></span>
-                  <div>
-                    <div class="file-upload-filename" id="upload-filename">document.pdf</div>
-                    <div class="file-upload-hint">Uploaded successfully</div>
-                  </div>
-                </div>
-                <button type="button" class="btn btn-ghost btn-sm" id="btn-remove-attachment"
-                  style="color:var(--accent-rose); font-size:12px;" title="Remove">✕ Remove</button>
-              </div>
+          <div class="form-row" style="grid-template-columns: 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group" style="margin-bottom:0; max-width: 300px;">
+              <label class="form-label" style="font-size:12px;">Date of Invoice *</label>
+              <input type="date" class="form-input" id="purchase-invoice-date" required>
             </div>
           </div>
         </div>
@@ -490,8 +454,8 @@
               <div style="margin-bottom:0;">
                 <label class="form-label"
                   style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Scheme
-                  Disc ₹</label>
-                <input type="number" class="form-input" id="pi-scheme-disc" step="0.01" min="0"
+                  Disc (₹ or %)</label>
+                <input type="text" class="form-input" id="pi-scheme-disc" placeholder="e.g. 50 or 10%"
                   style="padding: 7px 10px; font-size: 13px;">
               </div>
               <div style="margin-bottom:0;">
@@ -502,7 +466,15 @@
                   style="padding: 7px 10px; font-size: 13px;">
               </div>
             </div>
-            <div style="display:grid; grid-template-columns: 1.5fr 1fr 1fr auto; gap: 10px; align-items: flex-end;">
+            <div style="display:grid; grid-template-columns: 1.5fr 1.5fr 1fr 1fr 1fr auto; gap: 10px; align-items: flex-end;">
+              <div style="margin-bottom:0;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Batch</label>
+                <input type="text" class="form-input" id="pi-batch" placeholder="Batch No" style="padding: 7px 10px; font-size: 13px;">
+              </div>
+              <div style="margin-bottom:0;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Expiry</label>
+                <input type="month" class="form-input" id="pi-expiry" style="padding: 7px 10px; font-size: 13px;">
+              </div>
               <div style="margin-bottom:0;">
                 <label class="form-label"
                   style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Selling
@@ -536,7 +508,7 @@
                 <tr>
                   <th style="font-size:11px;">Barcode</th>
                   <th style="font-size:11px;">Product</th>
-                  <th style="font-size:11px;">HSN</th>
+                  <th style="font-size:11px;">HSN/Batch</th>
                   <th style="width: 60px; font-size:11px;">Qty</th>
                   <th style="width: 60px; font-size:11px;">Free</th>
                   <th style="width: 90px; font-size:11px;">Base Price</th>
@@ -563,26 +535,39 @@
       <!-- ── Sticky Footer with Summary ── -->
       <div
         style="padding: 16px 28px; background: var(--bg-surface); border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-lg) var(--radius-lg);">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <div style="display:flex; gap:24px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap: wrap; gap: 16px;">
+          <div style="display:flex; gap:12px; align-items: center; flex-wrap: wrap;">
             <div style="text-align:center;">
               <div style="font-size:20px; font-weight:800; color:var(--accent-primary);" id="purchase-summary-items">0
               </div>
               <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">
                 Items</div>
             </div>
-            <div style="width:1px; background:var(--border);"></div>
+            <div style="width:1px; height: 30px; background:var(--border);"></div>
             <div style="text-align:center;">
-              <div style="font-size:20px; font-weight:800; color:var(--accent-violet);" id="purchase-summary-gst">₹0.00
+              <div style="font-size:20px; font-weight:800;">
+                <input type="number" id="purchase-summary-gst" step="0.01" value="0.00"
+                  style="width:80px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--accent-violet); background:transparent;">
               </div>
-              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">GST
+              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">GST
                 Paid</div>
             </div>
-            <div style="width:1px; background:var(--border);"></div>
+            <div style="width:1px; height: 30px; background:var(--border);"></div>
             <div style="text-align:center;">
-              <div style="font-size:22px; font-weight:800; color:var(--accent-green);" id="purchase-grand-total">₹0.00
+              <div style="font-size:20px; font-weight:800;">
+                <input type="number" id="purchase-round-off" step="0.01" value="0.00"
+                  style="width:70px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--text-main); background:transparent;">
               </div>
-              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">
+              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">
+                Round Off</div>
+            </div>
+            <div style="width:1px; height: 30px; background:var(--border);"></div>
+            <div style="text-align:center;">
+              <div style="font-size:22px; font-weight:800;">
+                ₹<input type="number" id="purchase-grand-total" step="0.01" value="0.00"
+                  style="width:100px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:20px; font-weight:800; text-align:center; padding:2px; color:var(--accent-green); background:transparent;">
+              </div>
+              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">
                 Grand Total</div>
             </div>
           </div>
@@ -608,6 +593,7 @@
         <h2 style="font-size: 20px; font-weight:800; color:var(--text-primary); margin:0;" id="pd-title">🧾 Purchase
           Details</h2>
         <div style="display: flex; gap: 10px; align-items: center;">
+          <button id="pd-delete-purchase" class="btn btn-outline btn-sm" style="display:none; border-color: var(--text-rose); color: var(--text-rose);">🗑️ Delete</button>
           <button id="pd-resume-draft" class="btn btn-outline btn-sm"
             style="display:none; border-color: var(--accent-amber); color: var(--accent-amber);">✏️ Resume
             Draft</button>
@@ -639,6 +625,11 @@
             <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Status
             </div>
             <div style="font-size:16px; font-weight:700;" id="pd-status"></div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">
+              Round Off</div>
+            <div style="font-size:16px; font-weight:700; color:var(--text-main);" id="pd-round-off"></div>
           </div>
           <div style="text-align:right;">
             <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Total
@@ -1258,6 +1249,24 @@
         }
       }
     });
+    // ─── Updater Notifications ────────────────────────────────────────────────
+    if (window.api && window.api.updater) {
+      window.api.updater.onAvailable(() => {
+        showToast('Update available! Downloading in background...', 'info');
+      });
+      
+      let lastProgress = 0;
+      window.api.updater.onProgress((event, progressObj) => {
+        if (!progressObj) return;
+        const percent = Math.floor(progressObj.percent);
+        // Only show toast every 25% to avoid spamming the UI
+        if (percent >= lastProgress + 25) {
+          lastProgress = percent;
+          showToast(`Update downloading... ${percent}%`, 'info');
+        }
+      });
+    }
+
   </script>
 
 </body>

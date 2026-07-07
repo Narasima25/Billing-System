@@ -88,11 +88,11 @@ contextBridge.exposeInMainWorld('api', {
     sendBulkUpdate: (data) => ipcRenderer.invoke('customers:send-bulk-update', data),
   },
 
-  // ─── Purchases ───────────────────────────────────────────────────────
   purchases: {
     add: (data) => ipcRenderer.invoke('purchases:add', data),
     getAll: (params) => ipcRenderer.invoke('purchases:get-all', params),
     getDetails: (id) => ipcRenderer.invoke('purchases:get-details', id),
+    delete: (id) => ipcRenderer.invoke('purchases:delete', id),
   },
 
   // ─── Dashboard ───────────────────────────────────────────────────────
@@ -128,4 +128,10 @@ contextBridge.exposeInMainWorld('api', {
   dialog: {
     openFile: (options) => ipcRenderer.invoke('dialog:open-file', options),
   },
+
+  // ─── Updater ───────────────────────────────────────────────────────────
+  updater: {
+    onAvailable: (callback) => ipcRenderer.on('updater:available', callback),
+    onProgress: (callback) => ipcRenderer.on('updater:progress', callback),
+  }
 });

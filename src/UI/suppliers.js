@@ -26,6 +26,7 @@ const SuppliersModule = (() => {
           <p class="text-muted text-sm">Manage your product suppliers</p>
         </div>
         <div class="btn-group" style="align-items: center; gap: 16px;">
+          <input type="text" id="supplier-search" class="form-input" placeholder="Search supplier or invoice..." style="width: 250px;">
           <label style="font-size:13px; display:flex; align-items:center; gap:5px; cursor:pointer;">
             <input type="checkbox" id="show-inactive-suppliers"> Show Deactivated
           </label>
@@ -35,7 +36,6 @@ const SuppliersModule = (() => {
 
       <div class="report-summary mt-8 mb-12" id="supplier-ledger-summary">
         <div class="summary-card"><span class="sc-value text-teal" id="ledger-itc">₹0.00</span><span class="sc-label">Total Tax Claims (ITC)</span></div>
-        <div class="summary-card"><span class="sc-value text-rose" id="ledger-dues">₹0.00</span><span class="sc-label">Total Outstanding Dues</span></div>
       </div>
 
       <div class="card" style="padding:0;">
@@ -60,8 +60,11 @@ const SuppliersModule = (() => {
       <!-- Purchase History Sub-Panel -->
       <div class="modal-overlay" id="modal-supplier-history">
         <div class="modal-box lg">
-          <div class="modal-header">
-            <div class="modal-title" id="supplier-history-title">📋 Purchase History</div>
+          <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap: 16px;">
+              <div class="modal-title" id="supplier-history-title">📋 Purchase History</div>
+              <input type="text" id="purchase-history-search" class="form-input" placeholder="Search invoice..." style="width: 200px;">
+            </div>
             <button class="modal-close" onclick="closeModal('modal-supplier-history')">✕</button>
           </div>
           <div id="supplier-history-content"></div>
@@ -91,40 +94,43 @@ const SuppliersModule = (() => {
 
     document.getElementById('show-inactive-suppliers').addEventListener('change', loadSuppliers);
 
+    document.getElementById('supplier-search').addEventListener('input', (e) => {
+      const term = e.target.value.toLowerCase();
+      const rows = document.getElementById('suppliers-tbody').querySelectorAll('tr');
+      rows.forEach(row => {
+        if(row.children.length === 1) return; // Empty state row
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(term) ? '' : 'none';
+      });
+    });
+
+    document.getElementById('purchase-history-search').addEventListener('input', (e) => {
+      const term = e.target.value.toLowerCase();
+      const content = document.getElementById('supplier-history-content');
+      if (!content) return;
+      const rows = content.querySelectorAll('tbody tr');
+      rows.forEach(row => {
+        if(row.children.length === 1) return;
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(term) ? '' : 'none';
+      });
+    });
+
     document.getElementById('btn-save-purchase-item').addEventListener('click', () => addPurchaseItemSubmit());
     document.getElementById('btn-draft-purchase').addEventListener('click', () => savePurchase(true));
     document.getElementById('form-add-purchase').addEventListener('submit', (e) => { e.preventDefault(); savePurchase(false); });
+    document.getElementById('purchase-round-off').addEventListener('input', updatePurchaseTotal);
+    
+    document.getElementById('purchase-summary-gst').addEventListener('input', (e) => {
+      e.target.dataset.edited = 'true';
+      updatePurchaseTotal();
+    });
 
-    const calcFinalPurchasePrice = () => {
-      const base = parseFloat(document.getElementById('pi-base-price').value) || 0;
-      const disc = parseFloat(document.getElementById('pi-scheme-disc').value) || 0;
-      const qty = parseInt(document.getElementById('pi-qty').value) || 1;
-      const finalPrice = Math.max(0, (base * qty) - disc);
-      document.getElementById('pi-purchase-price').value = finalPrice.toFixed(2);
-    };
+    document.getElementById('purchase-grand-total').addEventListener('input', (e) => {
+      // no-op, always auto-calculates now
+    });
 
-    const inverseCalcBasePrice = () => {
-      const finalPrice = parseFloat(document.getElementById('pi-purchase-price').value) || 0;
-      const disc = parseFloat(document.getElementById('pi-scheme-disc').value) || 0;
-      const qty = parseInt(document.getElementById('pi-qty').value) || 1;
-      const base = (finalPrice + disc) / qty;
-      document.getElementById('pi-base-price').value = base.toFixed(2);
-    };
-
-    let calcTimer;
-    const debouncedCalc = () => {
-      clearTimeout(calcTimer);
-      calcTimer = setTimeout(calcFinalPurchasePrice, 200);
-    };
-    const debouncedInverseCalc = () => {
-      clearTimeout(calcTimer);
-      calcTimer = setTimeout(inverseCalcBasePrice, 200);
-    };
-
-    document.getElementById('pi-base-price').addEventListener('input', debouncedCalc);
-    document.getElementById('pi-scheme-disc').addEventListener('input', debouncedCalc);
-    document.getElementById('pi-qty').addEventListener('input', debouncedCalc);
-    document.getElementById('pi-purchase-price').addEventListener('input', debouncedInverseCalc);
+    // Auto-adjustments between Base Price and Final Purchase have been removed as per user request.
   }
 
   async function loadSuppliers() {
@@ -168,7 +174,6 @@ const SuppliersModule = (() => {
       const ledger = await window.api.suppliers.getLedger();
       if (ledger && ledger.success) {
         document.getElementById('ledger-itc').textContent = formatRupees(ledger.itcPaise);
-        document.getElementById('ledger-dues').textContent = formatRupees(ledger.duesPaise);
       }
     } catch (e) {
       console.error('Failed to load ledger', e);
@@ -286,6 +291,10 @@ const SuppliersModule = (() => {
       document.getElementById('pd-date').textContent = formatDate(dateStr);
       document.getElementById('pd-supplier').textContent = supplierName;
       document.getElementById('pd-status').textContent = status;
+      
+      const roundOffPaise = result.purchase.round_off_paise || 0;
+      document.getElementById('pd-round-off').textContent = formatRupees(roundOffPaise);
+      
       document.getElementById('pd-total').textContent = formatRupees(totalPaise);
       
       const viewAttachBtn = document.getElementById('pd-view-attachment');
@@ -301,6 +310,26 @@ const SuppliersModule = (() => {
       }
       
       const resumeBtn = document.getElementById('pd-resume-draft');
+      const deleteBtn = document.getElementById('pd-delete-purchase');
+      
+      if (deleteBtn) {
+        deleteBtn.style.display = 'block';
+        deleteBtn.onclick = async () => {
+          if (confirm('Are you sure you want to delete this purchase? This will remove the items from stock and reverse the ITC.')) {
+            const res = await window.api.purchases.delete(purchaseId);
+            if (res.success) {
+              showToast('Purchase deleted successfully', 'success');
+              closeModal('modal-purchase-details');
+              // Refresh history by triggering click again
+              const supplierId = result.purchase.supplier_id;
+              document.querySelector(`button[data-action="history"][data-id="${supplierId}"]`)?.click();
+            } else {
+              showToast(res.error || 'Failed to delete purchase', 'error');
+            }
+          }
+        };
+      }
+
       if (status === 'Draft') {
         resumeBtn.style.display = 'block';
         resumeBtn.onclick = () => {
@@ -334,7 +363,7 @@ const SuppliersModule = (() => {
               <td class="fw-700" style="text-align:right; display:none;">${formatRupees(item.unit_cost_paise)}</td>
               <td class="text-sm text-teal" style="text-align:right;">${formatRupees(item.selling_price_paise || 0)}</td>
               <td class="text-sm" style="text-align:right;">${item.cgst_percent}% / ${item.sgst_percent}%</td>
-              <td class="fw-700 text-teal" style="text-align:right;">${formatRupees(item.line_total_paise + Math.round(item.line_total_paise * ((item.cgst_percent + item.sgst_percent) / 100)))}</td>
+              <td class="fw-700 text-teal" style="text-align:right;">${formatRupees(item.line_total_paise)}</td>
             </tr>
           `;
         }).join('');
@@ -355,6 +384,8 @@ const SuppliersModule = (() => {
     document.getElementById('pi-barcode').value = '';
     document.getElementById('pi-name').value = '';
     document.getElementById('pi-hsn').value = '';
+    document.getElementById('pi-batch').value = '';
+    document.getElementById('pi-expiry').value = '';
     document.getElementById('pi-qty').value = '1';
     document.getElementById('pi-free-qty').value = '0';
     document.getElementById('pi-base-price').value = '';
@@ -372,15 +403,13 @@ const SuppliersModule = (() => {
       document.getElementById('purchase-supplier-name').value = supplierName;
       document.getElementById('purchase-invoice-number').value = '';
       document.getElementById('purchase-supplier-gstin').value = supplierGstin || '';
-      document.getElementById('purchase-status').value = 'Paid';
-      document.getElementById('purchase-amount-paid').value = '';
-      document.getElementById('purchase-due-date').value = '';
-      document.getElementById('purchase-attachment').value = '';
+      document.getElementById('purchase-invoice-date').value = new Date().toISOString().split('T')[0];
       document.getElementById('purchase-continuous-scan').checked = false;
-      
-      // Reset file upload zone
-      document.getElementById('upload-empty-state').style.display = '';
-      document.getElementById('upload-attached-state').style.display = 'none';
+      document.getElementById('purchase-round-off').value = '0.00';
+      const gstInput = document.getElementById('purchase-summary-gst');
+      gstInput.value = '0.00';
+      delete gstInput.dataset.edited;
+      delete document.getElementById('purchase-grand-total').dataset.edited;
       
       clearItemFields();
       pendingPurchaseItems = [];
@@ -415,21 +444,17 @@ const SuppliersModule = (() => {
       document.getElementById('purchase-supplier-name').value = supplierName;
       document.getElementById('purchase-invoice-number').value = invoiceNo || '';
       document.getElementById('purchase-supplier-gstin').value = purchaseObj.supplier_gstin || '';
-      document.getElementById('purchase-status').value = 'Paid';
-      document.getElementById('purchase-amount-paid').value = (purchaseObj.amount_paid_paise / 100) || '';
-      document.getElementById('purchase-due-date').value = purchaseObj.due_date || '';
-      document.getElementById('purchase-attachment').value = purchaseObj.attachment_path || '';
+      document.getElementById('purchase-invoice-date').value = purchaseObj.purchase_date ? purchaseObj.purchase_date.split(' ')[0] : new Date().toISOString().split('T')[0];
       document.getElementById('purchase-continuous-scan').checked = false;
+      document.getElementById('purchase-round-off').value = (purchaseObj.round_off_paise ? (purchaseObj.round_off_paise / 100).toFixed(2) : '0.00');
       
-      if (purchaseObj.attachment_path) {
-        document.getElementById('upload-empty-state').style.display = 'none';
-        document.getElementById('upload-attached-state').style.display = '';
-        const parts = purchaseObj.attachment_path.split(/[\\/]/);
-        document.getElementById('upload-filename').textContent = parts[parts.length-1];
-      } else {
-        document.getElementById('upload-empty-state').style.display = '';
-        document.getElementById('upload-attached-state').style.display = 'none';
-      }
+      const gstInput = document.getElementById('purchase-summary-gst');
+      gstInput.value = (purchaseObj.gst_paid_paise ? (purchaseObj.gst_paid_paise / 100).toFixed(2) : '0.00');
+      gstInput.dataset.edited = 'true'; // Keep the saved value explicitly
+
+      const totalInput = document.getElementById('purchase-grand-total');
+      totalInput.value = (purchaseObj.total_paise ? (purchaseObj.total_paise / 100).toFixed(2) : '0.00');
+      totalInput.dataset.edited = 'true'; // Keep the saved value explicitly
       
       clearItemFields();
       
@@ -449,7 +474,6 @@ const SuppliersModule = (() => {
       }));
       
       updatePurchaseTotal();
-      renderPurchaseItems();
       
       try {
         const cats = await window.api.categories.getAll();
@@ -471,36 +495,7 @@ const SuppliersModule = (() => {
     }
   }
 
-  // ─── File Upload Zone ────────────────────────────────────────────────
-  document.getElementById('purchase-upload-zone').addEventListener('click', async (e) => {
-    // Don't trigger if clicking the remove button
-    if (e.target.closest('#btn-remove-attachment')) return;
-    
-    try {
-      const result = await window.api.dialog.openFile({
-        title: 'Select Invoice / Bill Document'
-      });
-      if (result.success) {
-        document.getElementById('purchase-attachment').value = result.filePath;
-        document.getElementById('upload-filename').textContent = result.fileName;
-        document.getElementById('upload-empty-state').style.display = 'none';
-        document.getElementById('upload-attached-state').style.display = '';
-        if (typeof lucide !== 'undefined') lucide.createIcons({ node: document.getElementById('purchase-upload-zone') });
-        showToast('Document attached: ' + result.fileName, 'success');
-      }
-    } catch (err) {
-      console.error('File picker error:', err);
-      showToast('Failed to open file picker', 'error');
-    }
-  });
 
-  document.getElementById('btn-remove-attachment').addEventListener('click', (e) => {
-    e.stopPropagation();
-    document.getElementById('purchase-attachment').value = '';
-    document.getElementById('upload-empty-state').style.display = '';
-    document.getElementById('upload-attached-state').style.display = 'none';
-    showToast('Attachment removed', 'info');
-  });
 
   document.getElementById('btn-pi-lookup').addEventListener('click', async () => {
     const barcode = document.getElementById('pi-barcode').value.trim();
@@ -547,13 +542,24 @@ const SuppliersModule = (() => {
     const barcode = document.getElementById('pi-barcode').value.trim();
     const name = document.getElementById('pi-name').value.trim();
     const hsn = document.getElementById('pi-hsn').value.trim();
+    const batchNumber = document.getElementById('pi-batch').value.trim();
+    const expiryDate = document.getElementById('pi-expiry').value;
     const categoryId = document.getElementById('pi-category').value;
     const qty = parseInt(document.getElementById('pi-qty').value) || 0;
     const freeQty = parseInt(document.getElementById('pi-free-qty').value) || 0;
     const basePrice = parseFloat(document.getElementById('pi-base-price').value) || 0;
-    const schemeDisc = parseFloat(document.getElementById('pi-scheme-disc').value) || 0;
+    
+    let schemeDisc = 0;
+    const schemeDiscRaw = document.getElementById('pi-scheme-disc').value.trim();
+    if (schemeDiscRaw.endsWith('%')) {
+      const percent = parseFloat(schemeDiscRaw.replace('%', '')) || 0;
+      schemeDisc = basePrice * (percent / 100);
+    } else {
+      schemeDisc = parseFloat(schemeDiscRaw) || 0;
+    }
+    
     const finalPurchase = parseFloat(document.getElementById('pi-purchase-price').value) || 0;
-    const purchasePrice = qty > 0 ? finalPurchase / qty : 0;
+    const purchasePrice = basePrice;
     const sellingPrice = parseFloat(document.getElementById('pi-selling-price').value) || 0;
     const cgst = parseFloat(document.getElementById('pi-cgst').value) || 0;
     const sgst = parseFloat(document.getElementById('pi-sgst').value) || 0;
@@ -564,7 +570,7 @@ const SuppliersModule = (() => {
     }
 
     if (purchasePrice > sellingPrice) {
-      alert(`WARNING: Purchase price (₹${purchasePrice}) is higher than Selling price (₹${sellingPrice})! You are selling at a loss.`);
+      alert(`WARNING: Base price (₹${purchasePrice}) is higher than Selling price (₹${sellingPrice})! You might be selling at a loss.`);
     }
 
     const purchasePricePaise = Math.round(purchasePrice * 100);
@@ -584,6 +590,8 @@ const SuppliersModule = (() => {
         barcode,
         productName: name,
         hsnCode: hsn,
+        batchNumber: batchNumber,
+        expiryDate: expiryDate,
         categoryId: categoryId ? parseInt(categoryId) : null,
         quantity: qty,
         freeQuantity: freeQty,
@@ -625,8 +633,9 @@ const SuppliersModule = (() => {
     } else if (field === 'basePricePaise') {
       const newUnitPaise = Math.round((parseFloat(value) || 0) * 100);
       pendingPurchaseItems[index].basePricePaise = newUnitPaise;
-      pendingPurchaseItems[index].explicitLineTotalPaise = undefined;
-      pendingPurchaseItems[index].explicitLineGrandTotalPaise = undefined;
+      // Do not reset explicitLineTotalPaise!
+    } else if (field === 'explicitLineTotalPaise') {
+      pendingPurchaseItems[index].explicitLineTotalPaise = Math.round((parseFloat(value) || 0) * 100);
     } else if (field === 'explicitLineGrandTotalPaise') {
       pendingPurchaseItems[index].explicitLineGrandTotalPaise = Math.round((parseFloat(value) || 0) * 100);
     } else if (field === 'cgstPercent') {
@@ -642,37 +651,21 @@ const SuppliersModule = (() => {
 
   function updatePurchaseTotal() {
     const tbody = document.getElementById('purchase-items-tbody');
-    let grandTotalPaise = 0;
-    let totalGstPaise = 0;
     let totalItems = 0;
 
     tbody.innerHTML = pendingPurchaseItems.map((item, idx) => {
-      let lineTotalPaise = 0;
-      if (item.explicitLineTotalPaise !== undefined) {
-        lineTotalPaise = item.explicitLineTotalPaise;
-      } else if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
-        lineTotalPaise = Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
-      } else {
-        lineTotalPaise = item.quantity * item.purchasePricePaise;
-      }
-      const gstPercent = item.cgstPercent + item.sgstPercent;
-      const lineGstPaise = Math.round(lineTotalPaise * (gstPercent / 100));
+      let baseVal = item.basePricePaise || 0;
+      let totalVal = item.explicitLineTotalPaise !== undefined ? item.explicitLineTotalPaise : baseVal;
       
-      let lineGrandTotalPaise = lineTotalPaise + lineGstPaise;
-      let finalLineGstPaise = lineGstPaise;
-      if (item.explicitLineGrandTotalPaise !== undefined) {
-        lineGrandTotalPaise = item.explicitLineGrandTotalPaise;
-        finalLineGstPaise = lineGrandTotalPaise - lineTotalPaise;
-      }
-      
-      grandTotalPaise += lineGrandTotalPaise; 
-      totalGstPaise += finalLineGstPaise;
       totalItems += item.quantity;
 
       return `<tr>
         <td class="font-mono text-sm">${item.barcode}</td>
         <td class="fw-700">${item.productName}</td>
-        <td class="text-sm">${item.hsnCode || '—'}</td>
+        <td class="text-sm">${item.hsnCode || '—'}
+          ${item.batchNumber ? `<br><span class="text-muted" style="font-size:10px;">Batch: ${item.batchNumber}</span>` : ''}
+          ${item.expiryDate ? `<br><span class="text-muted" style="font-size:10px;">Exp: ${item.expiryDate}</span>` : ''}
+        </td>
         <td class="fw-700">
           <input type="number" min="1" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.quantity}" onchange="updatePurchaseItemField(${idx}, 'quantity', this.value)">
         </td>
@@ -680,14 +673,14 @@ const SuppliersModule = (() => {
           <input type="number" min="0" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.freeQuantity || 0}" onchange="updatePurchaseItemField(${idx}, 'freeQuantity', this.value)">
         </td>
         <td class="text-sm">
-          ₹<input type="number" min="0" step="0.01" style="width: 70px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(item.basePricePaise / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
+          ₹<input type="number" min="0" step="0.01" style="width: 70px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(baseVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
         </td>
         <td class="text-sm">
           <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.cgstPercent}" onchange="updatePurchaseItemField(${idx}, 'cgstPercent', this.value)">% / 
           <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.sgstPercent}" onchange="updatePurchaseItemField(${idx}, 'sgstPercent', this.value)">%
         </td>
         <td class="fw-700 text-teal">
-          ₹<input type="number" min="0" step="0.01" style="width: 80px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: bold; color: var(--accent-teal);" value="${(lineGrandTotalPaise / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'explicitLineGrandTotalPaise', this.value)">
+          ₹<input type="number" min="0" step="0.01" style="width: 80px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: bold; color: var(--accent-teal);" value="${(totalVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'explicitLineTotalPaise', this.value)">
         </td>
         <td><button type="button" class="btn btn-ghost btn-sm" onclick="removePurchaseItem(${idx})" style="padding:4px;color:var(--accent-rose);">✕</button></td>
       </tr>`;
@@ -697,9 +690,26 @@ const SuppliersModule = (() => {
       tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-muted);">No items added yet. Click "+ Add Product" to begin.</td></tr>`;
     }
 
+    let sumOfItemTotalsPaise = 0;
+    pendingPurchaseItems.forEach(item => {
+      let val = item.explicitLineTotalPaise !== undefined ? item.explicitLineTotalPaise : (item.basePricePaise || 0);
+      sumOfItemTotalsPaise += val;
+    });
+
+    const gstInput = document.getElementById('purchase-summary-gst');
+    let explicitGstVal = parseFloat(gstInput.value);
+    if (isNaN(explicitGstVal)) explicitGstVal = 0;
+    const finalGstPaise = Math.round(explicitGstVal * 100);
+
+    const roundOffVal = parseFloat(document.getElementById('purchase-round-off').value) || 0;
+    const roundOffPaise = Math.round(roundOffVal * 100);
+
+    const finalInvoiceTotalPaise = sumOfItemTotalsPaise + finalGstPaise + roundOffPaise;
+
+    const totalInput = document.getElementById('purchase-grand-total');
+    totalInput.value = (finalInvoiceTotalPaise / 100).toFixed(2);
+
     document.getElementById('purchase-summary-items').textContent = totalItems;
-    document.getElementById('purchase-summary-gst').textContent = formatRupees(totalGstPaise);
-    document.getElementById('purchase-grand-total').textContent = formatRupees(grandTotalPaise);
   }
 
   async function savePurchase(isDraft = false) {
@@ -708,10 +718,8 @@ const SuppliersModule = (() => {
     const supplierGstin = document.getElementById('purchase-supplier-gstin').value.trim();
     const notes = '';
     
-    const status = isDraft ? 'Draft' : document.getElementById('purchase-status').value;
-    const amountPaid = parseFloat(document.getElementById('purchase-amount-paid').value) || 0;
-    const dueDate = document.getElementById('purchase-due-date').value;
-    const attachmentPath = document.getElementById('purchase-attachment').value.trim();
+    const invoiceDate = document.getElementById('purchase-invoice-date').value;
+    const status = isDraft ? 'Draft' : 'Paid';
 
     if (pendingPurchaseItems.length === 0) { showToast('Please add at least one product', 'warning'); return; }
 
@@ -719,34 +727,19 @@ const SuppliersModule = (() => {
     btn.disabled = true;
     btn.textContent = 'Saving...';
 
-    // Calculate total GST paid on the frontend to pass to backend
-    let totalGstPaidPaise = 0;
-    pendingPurchaseItems.forEach(item => {
-      let lineTotalPaise = 0;
-      if (item.explicitLineTotalPaise !== undefined) {
-        lineTotalPaise = item.explicitLineTotalPaise;
-      } else if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
-        lineTotalPaise = Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
-      } else {
-        lineTotalPaise = item.quantity * item.purchasePricePaise;
-      }
-      const gstPercent = item.cgstPercent + item.sgstPercent;
-      const lineGstPaise = Math.round(lineTotalPaise * (gstPercent / 100));
-      
-      let lineGrandTotalPaise = lineTotalPaise + lineGstPaise;
-      let finalLineGstPaise = lineGstPaise;
-      if (item.explicitLineGrandTotalPaise !== undefined) {
-        lineGrandTotalPaise = item.explicitLineGrandTotalPaise;
-        finalLineGstPaise = lineGrandTotalPaise - lineTotalPaise;
-      }
-      
-      totalGstPaidPaise += finalLineGstPaise;
-    });
+    const explicitGstVal = parseFloat(document.getElementById('purchase-summary-gst').value) || 0;
+    let totalGstPaidPaise = Math.round(explicitGstVal * 100);
 
     const draftIdStr = document.getElementById('purchase-draft-id').value;
     const draftId = draftIdStr ? parseInt(draftIdStr) : null;
 
     try {
+      const roundOffVal = parseFloat(document.getElementById('purchase-round-off').value) || 0;
+      const roundOffPaise = Math.round(roundOffVal * 100);
+      
+      const explicitTotalVal = parseFloat(document.getElementById('purchase-grand-total').value) || 0;
+      const explicitTotalPaise = Math.round(explicitTotalVal * 100);
+
       const result = await window.api.purchases.add({
         supplierId,
         supplierGstin,
@@ -754,10 +747,13 @@ const SuppliersModule = (() => {
         items: pendingPurchaseItems,
         notes,
         gstPaidPaise: totalGstPaidPaise,
+        roundOffPaise: roundOffPaise,
+        explicitTotalPaise: explicitTotalPaise,
         status,
-        amountPaidPaise: Math.round(amountPaid * 100),
-        dueDate,
-        attachmentPath,
+        amountPaidPaise: 0,
+        dueDate: invoiceDate,
+        purchaseDate: invoiceDate,
+        attachmentPath: '',
         draftId
       });
 
