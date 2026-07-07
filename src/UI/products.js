@@ -333,6 +333,8 @@ const ProductsModule = (() => {
     document.getElementById('prod-stock').disabled = false;
     document.getElementById('prod-min-stock').value = product ? product.minimum_stock_level : '5';
     document.getElementById('prod-desc').value = product ? (product.description || '') : '';
+    document.getElementById('prod-batch').value = '';
+    document.getElementById('prod-expiry').value = '';
 
     openModal('modal-product');
     setTimeout(() => {
@@ -363,6 +365,8 @@ const ProductsModule = (() => {
       stockQuantity: stockVal !== '' ? parseInt(stockVal) : 0,
       minimumStockLevel: minStockVal !== '' ? parseInt(minStockVal) : 5,
       description: document.getElementById('prod-desc').value.trim(),
+      batchNumber: document.getElementById('prod-batch').value.trim(),
+      expiryDate: document.getElementById('prod-expiry').value
     };
 
     if (!data.barcode) { showToast('Barcode is required', 'warning'); return; }

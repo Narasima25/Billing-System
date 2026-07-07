@@ -203,6 +203,37 @@ function initializeSchema(db) {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS purchase_returns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      supplier_id INTEGER NOT NULL,
+      return_invoice_number TEXT DEFAULT '',
+      original_invoice_number TEXT DEFAULT '',
+      total_paise INTEGER DEFAULT 0,
+      total_gst_paise INTEGER DEFAULT 0,
+      notes TEXT DEFAULT '',
+      return_date TEXT DEFAULT (datetime('now','localtime')),
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS purchase_return_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      return_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      batch_number TEXT DEFAULT '',
+      quantity INTEGER NOT NULL,
+      refund_unit_paise INTEGER NOT NULL,
+      cgst_percent REAL DEFAULT 0,
+      sgst_percent REAL DEFAULT 0,
+      line_total_paise INTEGER NOT NULL,
+      FOREIGN KEY (return_id) REFERENCES purchase_returns(id),
+      FOREIGN KEY (product_id) REFERENCES products(id)
+    );
+  `);
+
   // ─── 11. Inventory Adjustments Table ─────────────────────────────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS inventory_adjustments (
@@ -321,6 +352,16 @@ function initializeSchema(db) {
   try {
     db.exec(`ALTER TABLE purchase_items ADD COLUMN sgst_percent REAL DEFAULT 0;`);
   } catch(e) { /* Column might already exist */ }
+
+  try {
+    db.exec(`ALTER TABLE purchase_returns ADD COLUMN total_gst_paise INTEGER DEFAULT 0;`);
+  } catch(e) { }
+  try {
+    db.exec(`ALTER TABLE purchase_return_items ADD COLUMN cgst_percent REAL DEFAULT 0;`);
+  } catch(e) { }
+  try {
+    db.exec(`ALTER TABLE purchase_return_items ADD COLUMN sgst_percent REAL DEFAULT 0;`);
+  } catch(e) { }
 
   // ─── Phase 2: Supplier & Purchase Redesign Migrations ───────────────
   try {

@@ -228,9 +228,20 @@
             <input type="number" class="form-input" id="prod-stock" placeholder="0" min="0">
           </div>
           <div class="form-group">
+            <label class="form-label">Batch Number</label>
+            <input type="text" class="form-input" id="prod-batch" placeholder="Initial Batch">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Expiry Date</label>
+            <input type="date" class="form-input" id="prod-expiry">
+          </div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
             <label class="form-label">Min. Stock Level</label>
             <input type="number" class="form-input" id="prod-min-stock" placeholder="5" min="0" value="5">
           </div>
+          <div class="form-group"></div>
           <div class="form-group"></div>
         </div>
         <div class="form-group">
@@ -325,184 +336,284 @@
     </div>
   </div>
 
-  <!-- Add Purchase Modal -->
-  <div class="modal-overlay" id="modal-add-purchase">
-    <div class="modal-box lg" style="max-width: 900px; padding: 0;">
-      <!-- Modal Header -->
-      <div class="modal-header"
-        style="padding: 20px 28px; margin-bottom: 0; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;">
-        <div class="modal-title" style="font-size: 17px;"><i data-lucide="shopping-bag"></i> New Purchase Entry</div>
-        <button class="modal-close" onclick="closeModal('modal-add-purchase')">✕</button>
+  <!-- Purchase Return Modal -->
+  <div class="modal-overlay" id="modal-purchase-return">
+    <div class="modal-box lg">
+      <div class="modal-header">
+        <div class="modal-title"><i data-lucide="corner-down-left"></i> Create Purchase Return (Debit Note)</div>
+        <button class="modal-close" onclick="closeModal('modal-purchase-return')">✕</button>
       </div>
-
-      <form id="form-add-purchase" onsubmit="return false;"
+      <form id="form-purchase-return" onsubmit="return false;"
         style="padding: 24px 28px; max-height: calc(85vh - 140px); overflow-y: auto;">
-        <input type="hidden" id="purchase-supplier-id">
-        <input type="hidden" id="purchase-draft-id">
+        <input type="hidden" id="return-supplier-id">
 
-        <!-- ── Section: Invoice Details ── -->
         <div style="margin-bottom: 20px;">
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
             <span
               style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">1</span>
-            <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Invoice Details</span>
+            <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Return Details</span>
           </div>
           <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;">Supplier</label>
-              <input type="text" class="form-input" id="purchase-supplier-name" readonly
+              <input type="text" class="form-input" id="return-supplier-name" readonly
                 style="background:var(--bg-surface); font-weight:600;">
             </div>
             <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:12px;">Invoice Number</label>
-              <input type="text" class="form-input" id="purchase-invoice-number" placeholder="e.g. INV-2026-001">
+              <label class="form-label" style="font-size:12px;">Debit Note No. *</label>
+              <input type="text" class="form-input" id="return-invoice-number" required>
             </div>
             <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:12px;">Supplier GSTIN</label>
-              <input type="text" class="form-input" id="purchase-supplier-gstin" placeholder="15-digit GSTIN">
+              <label class="form-label" style="font-size:12px;">Original Invoice No. (Optional)</label>
+              <input type="text" class="form-input" id="return-original-invoice">
             </div>
           </div>
         </div>
 
-        <!-- ── Section: Invoice Date ── -->
         <div style="margin-bottom: 20px;">
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
             <span
               style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">2</span>
-            <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Invoice Date</span>
+            <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Select Products & Batches</span>
           </div>
-          <div class="form-row" style="grid-template-columns: 1fr; gap: 14px; margin-bottom: 14px;">
-            <div class="form-group" style="margin-bottom:0; max-width: 300px;">
-              <label class="form-label" style="font-size:12px;">Date of Invoice *</label>
-              <input type="date" class="form-input" id="purchase-invoice-date" required>
+          <div
+            style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+            <div class="form-row"
+              style="grid-template-columns: 2fr 1.5fr 0.8fr 1fr 0.8fr 0.8fr auto; gap: 10px; align-items: flex-end;">
+              <div class="form-group" style="margin-bottom:0; position:relative;">
+                <label class="form-label" style="font-size:11px;">Search Product</label>
+                <input type="text" class="form-input" id="return-item-search" placeholder="Type name or scan barcode"
+                  autocomplete="off">
+                <div id="return-search-results" class="search-dropdown"
+                  style="display:none; position:absolute; width:100%; top:100%; z-index:10; background:#fff; border:1px solid #ddd; max-height:200px; overflow-y:auto; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+                </div>
+                <input type="hidden" id="return-item-id">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:11px;">Batch to Return</label>
+                <select class="form-select" id="return-item-batch" disabled>
+                  <option value="">-- Select Product First --</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:11px;">Qty</label>
+                <input type="number" class="form-input" id="return-item-qty" placeholder="0" min="1">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:11px;">Refund Price</label>
+                <input type="number" class="form-input" id="return-item-price" placeholder="0.00" step="0.01">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:11px;">CGST%</label>
+                <input type="number" class="form-input" id="return-item-cgst" value="0" min="0" step="0.01">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:11px;">SGST%</label>
+                <input type="number" class="form-input" id="return-item-sgst" value="0" min="0" step="0.01">
+              </div>
+              <button type="button" class="btn btn-secondary" id="btn-add-return-item"
+                style="height:36px; padding:0 16px;">Add</button>
             </div>
+          </div>
+
+          <div style="margin-top:16px; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+            <table class="data-table" style="margin:0; font-size:13px;">
+              <thead style="background:var(--bg-surface);">
+                <tr>
+                  <th style="padding:10px 14px;">Product</th>
+                  <th style="padding:10px 14px;">Batch</th>
+                  <th style="padding:10px 14px; text-align:right;">Qty</th>
+                  <th style="padding:10px 14px; text-align:right;">Refund Price</th>
+                  <th style="padding:10px 14px; text-align:right;">GST %</th>
+                  <th style="padding:10px 14px; text-align:right;">Total</th>
+                  <th style="padding:10px 14px; width:40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="return-items-tbody">
+                <tr>
+                  <td colspan="6" style="text-align:center; padding:20px; color:var(--text-muted);">No products added
+                    yet</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </form>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; gap:20px; align-items:center;">
+          <div>
+            <div style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Total GST
+              Refund</div>
+            <input type="number" id="return-total-gst" value="0.00" step="0.01"
+              style="width:100px; font-size:16px; font-weight:800; color:var(--text-primary); border:1px dashed var(--border); border-radius:4px; padding:4px 8px; text-align:right;">
+          </div>
+          <div>
+            <div style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Grand Total
+              Refund</div>
+            <input type="number" id="return-grand-total" value="0.00" step="0.01"
+              style="width:120px; font-size:18px; font-weight:800; color:var(--accent-primary); border:1px solid var(--accent-primary); border-radius:4px; padding:4px 8px; text-align:right; background:rgba(99, 102, 241, 0.05);">
+          </div>
+        </div>
+        <div style="display:flex; gap:12px;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-purchase-return')">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btn-save-return">Save Return</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Purchase Modal -->
+  <div class="modal-overlay" id="modal-add-purchase">
+    <div class="modal-box" style="width: 98vw; max-width: 1600px; height: 95vh; padding: 0; display: flex; flex-direction: column;">
+      <!-- Modal Header -->
+      <div class="modal-header" style="padding: 16px 24px; margin-bottom: 0; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;">
+        <div class="modal-title" style="font-size: 17px;"><i data-lucide="shopping-bag"></i> New Purchase Entry</div>
+        <button class="modal-close" onclick="closeModal('modal-add-purchase')">✕</button>
+      </div>
+
+      <form id="form-add-purchase" onsubmit="return false;" style="display: flex; flex: 1; overflow: hidden; margin: 0; flex-direction: row;">
+        <input type="hidden" id="purchase-supplier-id">
+        <input type="hidden" id="purchase-draft-id">
+
+        <!-- ── LEFT SIDE: Entry Set ── -->
+        <div style="flex: 0 0 450px; padding: 24px; overflow-y: auto; background: var(--bg-surface); display: flex; flex-direction: column; border-right: 1px solid var(--border);">
+          
+          <!-- Section: Invoice Details -->
+          <div style="margin-bottom: 20px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+              <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">1</span>
+              <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Invoice Details</span>
+            </div>
+            <div class="form-row" style="grid-template-columns: 1fr; gap: 14px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:12px;">Supplier</label>
+                <input type="text" class="form-input" id="purchase-supplier-name" readonly style="background:var(--bg-surface); font-weight:600;">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:12px;">Invoice Number</label>
+                <input type="text" class="form-input" id="purchase-invoice-number" placeholder="e.g. INV-2026-001">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:12px;">Supplier GSTIN</label>
+                <input type="text" class="form-input" id="purchase-supplier-gstin" placeholder="15-digit GSTIN">
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Invoice Date -->
+          <div style="margin-bottom: 20px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+              <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">2</span>
+              <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Invoice Date</span>
+            </div>
+            <div class="form-row" style="grid-template-columns: 1fr; gap: 14px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:12px;">Date of Invoice *</label>
+                <input type="date" class="form-input" id="purchase-invoice-date" required>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Add Products -->
+          <div style="margin-bottom: 20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">3</span>
+                <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Add Products</span>
+              </div>
+              <label style="font-size:12px; display:flex; align-items:center; gap:5px; cursor:pointer; color:var(--text-secondary); user-select:none;">
+                <input type="checkbox" id="purchase-continuous-scan" style="accent-color:var(--accent-primary);"> Continuous Scan
+              </label>
+            </div>
+
+            <!-- Item Entry Card -->
+            <div style="padding: 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Barcode *</label>
+                  <div style="display:flex; gap:4px;">
+                    <input type="text" class="form-input" id="pi-barcode" placeholder="Scan/Type" style="padding: 7px 10px; font-size: 13px;">
+                    <button type="button" class="btn btn-secondary" id="btn-pi-lookup" style="padding: 7px 10px; font-size: 12px;">🔍</button>
+                  </div>
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Product Name *</label>
+                  <input type="text" class="form-input" id="pi-name" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">HSN</label>
+                  <input type="text" class="form-input" id="pi-hsn" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Category</label>
+                  <select class="form-select" id="pi-category" style="padding: 7px 10px; font-size: 13px;">
+                    <option value="">— Select —</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Qty *</label>
+                  <input type="number" class="form-input" id="pi-qty" value="1" min="1" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Free Qty</label>
+                  <input type="number" class="form-input" id="pi-free-qty" value="0" min="0" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Base Price ₹</label>
+                  <input type="number" class="form-input" id="pi-base-price" step="0.01" min="0" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Scheme Disc</label>
+                  <input type="text" class="form-input" id="pi-scheme-disc" placeholder="50 or 10%" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0; grid-column: span 2;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Final Purchase ₹ *</label>
+                  <input type="number" class="form-input" id="pi-purchase-price" step="0.01" min="0" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+              </div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Batch</label>
+                  <input type="text" class="form-input" id="pi-batch" placeholder="Batch No" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Expiry</label>
+                  <input type="month" class="form-input" id="pi-expiry" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Selling ₹ *</label>
+                  <input type="number" class="form-input" id="pi-selling-price" step="0.01" min="0" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">CGST%</label>
+                  <input type="number" class="form-input" id="pi-cgst" value="0" min="0" step="0.01" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom:0;">
+                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">SGST%</label>
+                  <input type="number" class="form-input" id="pi-sgst" value="0" min="0" step="0.01" style="padding: 7px 10px; font-size: 13px;">
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary" id="btn-save-purchase-item" style="width: 100%; padding: 10px; font-size: 14px;">+ Add Product to Table</button>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div class="form-group" style="margin-bottom:24px;">
+            <label class="form-label" style="font-size:12px;">Notes</label>
+            <textarea class="form-textarea" id="purchase-notes" placeholder="Optional notes about this purchase..." style="min-height:60px;"></textarea>
           </div>
         </div>
 
-        <!-- ── Section: Add Products ── -->
-        <div style="margin-bottom: 16px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span
-                style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">3</span>
-              <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Add Products</span>
+        <!-- ── LEFT SIDE: Added Data & Totals ── -->
+        <div style="flex: 1; display: flex; flex-direction: column; background: var(--bg-body); overflow: hidden;">
+          
+          <!-- Items Table (takes remaining space) -->
+          <div class="data-table-wrap" style="flex: 1; padding: 24px; overflow-y: auto;">
+            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight:700; font-size:15px; color:var(--text-primary);">Added Products</span>
             </div>
-            <label
-              style="font-size:12px; display:flex; align-items:center; gap:5px; cursor:pointer; color:var(--text-secondary); user-select:none;">
-              <input type="checkbox" id="purchase-continuous-scan" style="accent-color:var(--accent-primary);">
-              Continuous Scan
-            </label>
-          </div>
-
-          <!-- Item Entry Card -->
-          <div
-            style="padding: 14px; margin-bottom: 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
-            <div style="display:grid; grid-template-columns: 2fr 3fr 1.2fr 1.8fr; gap: 10px; margin-bottom: 10px;">
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Barcode
-                  *</label>
-                <div style="display:flex; gap:4px;">
-                  <input type="text" class="form-input" id="pi-barcode" placeholder="Scan/Type"
-                    style="padding: 7px 10px; font-size: 13px;">
-                  <button type="button" class="btn btn-secondary" id="btn-pi-lookup"
-                    style="padding: 7px 10px; font-size: 12px; white-space:nowrap;">🔍</button>
-                </div>
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Product
-                  Name *</label>
-                <input type="text" class="form-input" id="pi-name" style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">HSN</label>
-                <input type="text" class="form-input" id="pi-hsn" style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Category</label>
-                <select class="form-select" id="pi-category" style="padding: 7px 10px; font-size: 13px;">
-                  <option value="">— Select —</option>
-                </select>
-              </div>
-            </div>
-            <div
-              style="display:grid; grid-template-columns: 1fr 1fr 1.5fr 1.5fr 1.5fr; gap: 10px; align-items: flex-end; margin-bottom: 10px;">
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Qty
-                  *</label>
-                <input type="number" class="form-input" id="pi-qty" value="1" min="1"
-                  style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Free
-                  Qty</label>
-                <input type="number" class="form-input" id="pi-free-qty" value="0" min="0"
-                  style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Base
-                  Price ₹</label>
-                <input type="number" class="form-input" id="pi-base-price" step="0.01" min="0"
-                  style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Scheme
-                  Disc (₹ or %)</label>
-                <input type="text" class="form-input" id="pi-scheme-disc" placeholder="e.g. 50 or 10%"
-                  style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Final
-                  Purchase ₹ *</label>
-                <input type="number" class="form-input" id="pi-purchase-price" step="0.01" min="0"
-                  style="padding: 7px 10px; font-size: 13px;">
-              </div>
-            </div>
-            <div style="display:grid; grid-template-columns: 1.5fr 1.5fr 1fr 1fr 1fr auto; gap: 10px; align-items: flex-end;">
-              <div style="margin-bottom:0;">
-                <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Batch</label>
-                <input type="text" class="form-input" id="pi-batch" placeholder="Batch No" style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Expiry</label>
-                <input type="month" class="form-input" id="pi-expiry" style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Selling
-                  ₹ *</label>
-                <input type="number" class="form-input" id="pi-selling-price" step="0.01" min="0"
-                  style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">CGST%</label>
-                <input type="number" class="form-input" id="pi-cgst" value="0" min="0" step="0.01"
-                  style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <label class="form-label"
-                  style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">SGST%</label>
-                <input type="number" class="form-input" id="pi-sgst" value="0" min="0" step="0.01"
-                  style="padding: 7px 10px; font-size: 13px;">
-              </div>
-              <div style="margin-bottom:0;">
-                <button type="button" class="btn btn-primary" id="btn-save-purchase-item"
-                  style="padding: 7px 18px; font-size: 13px; height: 35px; white-space:nowrap;">+ Add</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Items Table -->
-          <div class="data-table-wrap" style="max-height: 220px; overflow-y: auto;">
             <table class="data-table" style="min-width: 100%;">
               <thead>
                 <tr>
@@ -522,68 +633,50 @@
               </tbody>
             </table>
           </div>
+
+          <!-- Sticky Footer with Summary -->
+          <div style="padding: 16px 24px; background: var(--bg-surface); border-top: 1px solid var(--border);">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap: wrap; gap: 16px;">
+              <div style="display:flex; gap:12px; align-items: center; flex-wrap: wrap;">
+                <div style="text-align:center;">
+                  <div style="font-size:20px; font-weight:800; color:var(--accent-primary);" id="purchase-summary-items">0</div>
+                  <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Items</div>
+                </div>
+                <div style="width:1px; height: 30px; background:var(--border);"></div>
+                <div style="text-align:center;">
+                  <div style="font-size:20px; font-weight:800;">
+                    <input type="number" id="purchase-summary-gst" step="0.01" value="0.00" style="width:80px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--accent-violet); background:transparent;">
+                  </div>
+                  <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">GST Paid</div>
+                </div>
+                <div style="width:1px; height: 30px; background:var(--border);"></div>
+                <div style="text-align:center;">
+                  <div style="font-size:20px; font-weight:800;">
+                    <input type="number" id="purchase-round-off" step="0.01" value="0.00" style="width:70px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--text-main); background:transparent;">
+                  </div>
+                  <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">Round Off</div>
+                </div>
+                <div style="width:1px; height: 30px; background:var(--border);"></div>
+                <div style="text-align:center;">
+                  <div style="font-size:22px; font-weight:800;">
+                    ₹<input type="number" id="purchase-grand-total" step="0.01" value="0.00" style="width:100px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:20px; font-weight:800; text-align:center; padding:2px; color:var(--accent-green); background:transparent;">
+                  </div>
+                  <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">Grand Total</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:10px;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-purchase')">Cancel</button>
+                <button type="button" class="btn btn-secondary" id="btn-draft-purchase" style="border-color:var(--accent-amber); color:var(--accent-amber);">📝 Draft</button>
+                <button type="submit" form="form-add-purchase" class="btn btn-primary" id="btn-save-purchase" style="padding: 10px 24px;">✓ Save Purchase</button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- ── Notes ── -->
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label" style="font-size:12px;">Notes</label>
-          <textarea class="form-textarea" id="purchase-notes" placeholder="Optional notes about this purchase..."
-            style="min-height:60px;"></textarea>
-        </div>
       </form>
-
-      <!-- ── Sticky Footer with Summary ── -->
-      <div
-        style="padding: 16px 28px; background: var(--bg-surface); border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-lg) var(--radius-lg);">
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap: wrap; gap: 16px;">
-          <div style="display:flex; gap:12px; align-items: center; flex-wrap: wrap;">
-            <div style="text-align:center;">
-              <div style="font-size:20px; font-weight:800; color:var(--accent-primary);" id="purchase-summary-items">0
-              </div>
-              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">
-                Items</div>
-            </div>
-            <div style="width:1px; height: 30px; background:var(--border);"></div>
-            <div style="text-align:center;">
-              <div style="font-size:20px; font-weight:800;">
-                <input type="number" id="purchase-summary-gst" step="0.01" value="0.00"
-                  style="width:80px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--accent-violet); background:transparent;">
-              </div>
-              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">GST
-                Paid</div>
-            </div>
-            <div style="width:1px; height: 30px; background:var(--border);"></div>
-            <div style="text-align:center;">
-              <div style="font-size:20px; font-weight:800;">
-                <input type="number" id="purchase-round-off" step="0.01" value="0.00"
-                  style="width:70px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--text-main); background:transparent;">
-              </div>
-              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">
-                Round Off</div>
-            </div>
-            <div style="width:1px; height: 30px; background:var(--border);"></div>
-            <div style="text-align:center;">
-              <div style="font-size:22px; font-weight:800;">
-                ₹<input type="number" id="purchase-grand-total" step="0.01" value="0.00"
-                  style="width:100px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:20px; font-weight:800; text-align:center; padding:2px; color:var(--accent-green); background:transparent;">
-              </div>
-              <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">
-                Grand Total</div>
-            </div>
-          </div>
-          <div style="display:flex; gap:10px;">
-            <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-purchase')">Cancel</button>
-            <button type="button" class="btn btn-secondary" id="btn-draft-purchase"
-              style="border-color:var(--accent-amber); color:var(--accent-amber);">📝 Draft</button>
-            <button type="submit" form="form-add-purchase" class="btn btn-primary" id="btn-save-purchase"
-              style="padding: 10px 24px;">✓ Save
-              Purchase</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
-
+  
   <!-- Purchase Details Modal -->
   <div class="modal-overlay" id="modal-purchase-details">
     <div class="modal-box"
@@ -593,7 +686,8 @@
         <h2 style="font-size: 20px; font-weight:800; color:var(--text-primary); margin:0;" id="pd-title">🧾 Purchase
           Details</h2>
         <div style="display: flex; gap: 10px; align-items: center;">
-          <button id="pd-delete-purchase" class="btn btn-outline btn-sm" style="display:none; border-color: var(--text-rose); color: var(--text-rose);">🗑️ Delete</button>
+          <button id="pd-delete-purchase" class="btn btn-outline btn-sm"
+            style="display:none; border-color: var(--text-rose); color: var(--text-rose);">🗑️ Delete</button>
           <button id="pd-resume-draft" class="btn btn-outline btn-sm"
             style="display:none; border-color: var(--accent-amber); color: var(--accent-amber);">✏️ Resume
             Draft</button>
@@ -1254,7 +1348,7 @@
       window.api.updater.onAvailable(() => {
         showToast('Update available! Downloading in background...', 'info');
       });
-      
+
       let lastProgress = 0;
       window.api.updater.onProgress((event, progressObj) => {
         if (!progressObj) return;

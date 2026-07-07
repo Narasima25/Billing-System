@@ -382,14 +382,37 @@ ipcMain.handle('suppliers:get-purchases', async (_e, supplierId) => {
   }
 });
 
-ipcMain.handle('suppliers:get-ledger', async () => {
+ipcMain.handle('suppliers:get-ledger', async (_e, monthStr) => {
   try {
-    const itcRow = queryOne("SELECT SUM(gst_paid_paise) as total_itc FROM purchases WHERE status != 'Draft'");
-    const duesRow = queryOne("SELECT SUM(total_paise - amount_paid_paise) as total_dues FROM purchases WHERE status IN ('Partially Paid', 'Credit/Pending')");
+    let itcQuery = "SELECT SUM(gst_paid_paise) as total_itc FROM purchases WHERE status != 'Draft'";
+    let duesQuery = "SELECT SUM(total_paise - amount_paid_paise) as total_dues FROM purchases WHERE status IN ('Partially Paid', 'Credit/Pending')";
+    let returnsItcQuery = "SELECT SUM(total_gst_paise) as return_itc FROM purchase_returns WHERE 1=1";
+    const params = [];
+    const returnsParams = [];
+
+    if (monthStr) {
+      itcQuery += " AND strftime('%Y-%m', purchase_date) = ?";
+      duesQuery += " AND strftime('%Y-%m', purchase_date) = ?";
+      returnsItcQuery += " AND strftime('%Y-%m', return_date) = ?";
+      params.push(monthStr);
+      returnsParams.push(monthStr);
+    }
+
+    const itcRow = queryOne(itcQuery, params);
+    const duesRow = queryOne(duesQuery, params);
+    
+    // Purchase Returns GST reduces the ITC
+    let returnItc = 0;
+    try {
+      const returnsItcRow = queryOne(returnsItcQuery, returnsParams);
+      returnItc = returnsItcRow?.return_itc || 0;
+    } catch(err) {
+      // Table might not be migrated yet or exist
+    }
 
     return {
       success: true,
-      itcPaise: itcRow?.total_itc || 0,
+      itcPaise: (itcRow?.total_itc || 0) - returnItc,
       duesPaise: duesRow?.total_dues || 0
     };
   } catch (err) {
@@ -399,6 +422,14 @@ ipcMain.handle('suppliers:get-ledger', async () => {
 });
 
 // ─── PRODUCTS ────────────────────────────────────────────────────────────────
+
+ipcMain.handle('products:get-batches', async (_e, productId) => {
+  try {
+    return queryAll("SELECT * FROM product_batches WHERE product_id = ? AND quantity > 0 ORDER BY id ASC", [productId]);
+  } catch (err) {
+    return [];
+  }
+});
 
 ipcMain.handle('products:get-all', async (_e, { search, categoryId, supplierId, stockFilter, page, perPage } = {}) => {
   try {
@@ -540,6 +571,7 @@ ipcMain.handle('products:update', async (_e, data) => {
           [data.id, type, Math.abs(diff)]
         );
       }
+
     }
 
     if (data.batchNumber || data.expiryDate) {
@@ -1289,6 +1321,65 @@ ipcMain.handle('purchases:delete', async (_e, purchaseId) => {
   } catch (err) {
     console.error('purchases:delete error:', err);
     return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('purchases:check-invoice', async (_e, { supplierId, invoiceNumber }) => {
+  try {
+    const existing = queryOne("SELECT id FROM purchases WHERE supplier_id = ? AND invoice_number = ? AND status != 'Draft'", [supplierId, invoiceNumber]);
+    return { exists: !!existing };
+  } catch (err) {
+    return { exists: false, error: err.message };
+  }
+});
+
+ipcMain.handle('purchases:return:add', async (_e, data) => {
+  try {
+    const returnTransaction = db.transaction(() => {
+      const { lastInsertRowid: returnId } = db.prepare(
+        "INSERT INTO purchase_returns (supplier_id, return_invoice_number, original_invoice_number, total_paise, total_gst_paise, notes) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(data.supplierId, data.returnInvoiceNumber || '', data.originalInvoiceNumber || '', data.totalPaise || 0, data.totalGstPaise || 0, data.notes || '');
+
+      for (const item of data.items) {
+        db.prepare(
+          "INSERT INTO purchase_return_items (return_id, product_id, batch_number, quantity, refund_unit_paise, cgst_percent, sgst_percent, line_total_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        ).run(returnId, item.productId, item.batchNumber || '', item.quantity, item.refundUnitPaise, item.cgstPercent || 0, item.sgstPercent || 0, item.lineTotalPaise);
+
+        db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(item.quantity, item.productId);
+        
+        if (item.batchNumber) {
+          db.prepare("UPDATE product_batches SET quantity = quantity - ? WHERE product_id = ? AND batch_number = ?").run(item.quantity, item.productId, item.batchNumber);
+        }
+
+        db.prepare(
+          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'reduce', ?, ?)"
+        ).run(item.productId, item.quantity, `Purchase Return: ${data.returnInvoiceNumber}`);
+      }
+      return returnId;
+    });
+
+    const returnId = returnTransaction();
+    return { success: true, returnId };
+  } catch (err) {
+    console.error('purchases:return:add error:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('purchases:return:get-all', async (_e, supplierId = null) => {
+  try {
+    const returns = queryAll(
+      `SELECT pr.*, s.name as supplier_name,
+        (SELECT COUNT(*) FROM purchase_return_items WHERE return_id = pr.id) as item_count
+       FROM purchase_returns pr
+       JOIN suppliers s ON pr.supplier_id = s.id
+       WHERE (? IS NULL OR pr.supplier_id = ?)
+       ORDER BY pr.created_at DESC`,
+       [supplierId, supplierId]
+    );
+    return returns;
+  } catch (err) {
+    return [];
   }
 });
 

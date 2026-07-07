@@ -34,8 +34,14 @@ const SuppliersModule = (() => {
         </div>
       </div>
 
-      <div class="report-summary mt-8 mb-12" id="supplier-ledger-summary">
-        <div class="summary-card"><span class="sc-value text-teal" id="ledger-itc">₹0.00</span><span class="sc-label">Total Tax Claims (ITC)</span></div>
+      <div class="report-summary mt-8 mb-12" id="supplier-ledger-summary" style="display:flex; align-items:center; gap:20px; justify-content:space-between; flex-wrap:wrap;">
+        <div style="display:flex; gap:16px;">
+          <div class="summary-card"><span class="sc-value text-teal" id="ledger-itc">₹0.00</span><span class="sc-label">Total Tax Claims (ITC)</span></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; background:var(--bg-surface); padding:8px 16px; border:1px solid var(--border); border-radius:8px;">
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase;">Filter ITC by Month:</label>
+          <input type="month" id="itc-month-filter" class="form-input" style="padding:6px 12px; width:auto; border-radius:6px; font-size:13px;">
+        </div>
       </div>
 
       <div class="card" style="padding:0;">
@@ -90,9 +96,15 @@ const SuppliersModule = (() => {
       if (btn.dataset.action === 'restore') restoreSupplier(id);
       if (btn.dataset.action === 'history') viewHistory(id, btn.dataset.name);
       if (btn.dataset.action === 'add-purchase') openAddPurchase(id, btn.dataset.name, btn.dataset.gstin);
+      if (btn.dataset.action === 'add-return') openPurchaseReturnModal(id, btn.dataset.name);
     });
 
     document.getElementById('show-inactive-suppliers').addEventListener('change', loadSuppliers);
+    
+    const itcMonthFilter = document.getElementById('itc-month-filter');
+    if (itcMonthFilter) {
+      itcMonthFilter.addEventListener('change', () => loadLedger());
+    }
 
     document.getElementById('supplier-search').addEventListener('input', (e) => {
       const term = e.target.value.toLowerCase();
@@ -130,6 +142,20 @@ const SuppliersModule = (() => {
       // no-op, always auto-calculates now
     });
 
+    document.getElementById('purchase-invoice-number').addEventListener('blur', async (e) => {
+      const invoiceNo = e.target.value.trim();
+      const supplierIdStr = document.getElementById('purchase-supplier-id').value;
+      if (!invoiceNo || !supplierIdStr) return;
+      
+      const res = await window.api.purchases.checkInvoice({ supplierId: parseInt(supplierIdStr), invoiceNumber: invoiceNo });
+      if (res.exists) {
+        showToast('Invoice number already exists for this supplier!', 'error');
+        e.target.style.borderColor = 'red';
+      } else {
+        e.target.style.borderColor = 'var(--border)';
+      }
+    });
+
     // Auto-adjustments between Base Price and Final Purchase have been removed as per user request.
   }
 
@@ -154,6 +180,7 @@ const SuppliersModule = (() => {
           <div class="btn-group" style="gap:4px;">
             ${s.is_active === 1 ? `
             <button class="btn btn-ghost btn-sm" data-action="add-purchase" data-id="${s.id}" data-name="${s.name}" data-gstin="${s.gst_number || ''}" title="Add Purchase">➕</button>
+            <button class="btn btn-ghost btn-sm" data-action="add-return" data-id="${s.id}" data-name="${s.name}" title="Create Return">↩️</button>
             <button class="btn btn-ghost btn-sm" data-action="history" data-id="${s.id}" data-name="${s.name}" title="Purchase History">📋</button>
             <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${s.id}" title="Edit">✏️</button>
             <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${s.id}" title="Deactivate">🗑️</button>
@@ -171,7 +198,9 @@ const SuppliersModule = (() => {
 
   async function loadLedger() {
     try {
-      const ledger = await window.api.suppliers.getLedger();
+      const monthFilter = document.getElementById('itc-month-filter');
+      const monthVal = monthFilter ? monthFilter.value : '';
+      const ledger = await window.api.suppliers.getLedger(monthVal);
       if (ledger && ledger.success) {
         document.getElementById('ledger-itc').textContent = formatRupees(ledger.itcPaise);
       }
@@ -723,6 +752,14 @@ const SuppliersModule = (() => {
 
     if (pendingPurchaseItems.length === 0) { showToast('Please add at least one product', 'warning'); return; }
 
+    if (invoiceNumber && !isDraft) {
+      const res = await window.api.purchases.checkInvoice({ supplierId, invoiceNumber });
+      if (res.exists) {
+        showToast('Invoice number already exists for this supplier!', 'error');
+        return;
+      }
+    }
+
     const btn = document.getElementById('btn-save-purchase');
     btn.disabled = true;
     btn.textContent = 'Saving...';
@@ -773,9 +810,195 @@ const SuppliersModule = (() => {
     btn.textContent = 'Save Purchase';
   }
 
+  // ─── Purchase Return (Debit Note) Logic ─────────────────────────────────
+  let pendingReturnItems = [];
+
+  async function openPurchaseReturnModal(supplierId, supplierName) {
+    document.getElementById('return-supplier-id').value = supplierId;
+    document.getElementById('return-supplier-name').value = supplierName;
+    document.getElementById('return-invoice-number').value = 'DN-' + Date.now().toString().slice(-6);
+    document.getElementById('return-original-invoice').value = '';
+    
+    pendingReturnItems = [];
+    renderReturnItems();
+    
+    const searchInput = document.getElementById('return-item-search');
+    const batchSelect = document.getElementById('return-item-batch');
+    const resultsDiv = document.getElementById('return-search-results');
+    
+    searchInput.oninput = async (e) => {
+      const q = e.target.value.trim();
+      if(q.length < 2) { resultsDiv.style.display = 'none'; return; }
+      const res = await window.api.products.getAll({ search: q, perPage: 10 });
+      if(res.products && res.products.length > 0) {
+        resultsDiv.innerHTML = res.products.map(p => 
+          `<div class="search-item" style="padding:8px; cursor:pointer; border-bottom:1px solid #eee;" data-id="${p.id}" data-name="${p.name}">
+            <div style="font-weight:600;">${p.name}</div>
+            <div style="font-size:11px; color:#666;">Stock: ${p.stock_quantity}</div>
+          </div>`
+        ).join('');
+        resultsDiv.style.display = 'block';
+      } else {
+        resultsDiv.innerHTML = `<div style="padding:8px; color:#666;">No products found</div>`;
+        resultsDiv.style.display = 'block';
+      }
+    };
+    
+    resultsDiv.onclick = async (e) => {
+      const item = e.target.closest('.search-item');
+      if(!item) return;
+      const id = item.dataset.id;
+      const name = item.dataset.name;
+      searchInput.value = name;
+      document.getElementById('return-item-id').value = id;
+      resultsDiv.style.display = 'none';
+      
+      batchSelect.innerHTML = '<option value="">Loading...</option>';
+      batchSelect.disabled = true;
+      const batches = await window.api.products.getBatches(id);
+      if(batches.length > 0) {
+        batchSelect.innerHTML = '<option value="">-- Select Batch --</option>' + batches.map(b => 
+          `<option value="${b.batch_number}" data-qty="${b.quantity}" data-price="${b.purchase_price_paise}">Batch: ${b.batch_number} (Exp: ${b.expiry_date || 'N/A'}) - Qty: ${b.quantity}</option>`
+        ).join('');
+        batchSelect.disabled = false;
+        
+        batchSelect.onchange = () => {
+          const opt = batchSelect.options[batchSelect.selectedIndex];
+          if(opt && opt.dataset.price) {
+            document.getElementById('return-item-price').value = (parseInt(opt.dataset.price)/100).toFixed(2);
+          }
+        };
+      } else {
+        batchSelect.innerHTML = '<option value="">No batches found (Stock: 0)</option>';
+      }
+    };
+    
+    document.getElementById('btn-add-return-item').onclick = () => {
+      const prodId = document.getElementById('return-item-id').value;
+      const prodName = searchInput.value;
+      const batchOpt = batchSelect.options[batchSelect.selectedIndex];
+      const batchNo = batchOpt ? batchOpt.value : '';
+      const availableQty = batchOpt ? parseInt(batchOpt.dataset.qty) : 0;
+      
+      const qty = parseInt(document.getElementById('return-item-qty').value) || 0;
+      const price = parseFloat(document.getElementById('return-item-price').value) || 0;
+      const cgst = parseFloat(document.getElementById('return-item-cgst').value) || 0;
+      const sgst = parseFloat(document.getElementById('return-item-sgst').value) || 0;
+      
+      if(!prodId) return showToast('Please select a product', 'warning');
+      if(!batchNo) return showToast('Please select a batch to return', 'warning');
+      if(qty <= 0) return showToast('Quantity must be greater than 0', 'warning');
+      if(qty > availableQty) return showToast(`Cannot return more than available batch stock (${availableQty})`, 'error');
+      
+      const baseTotal = price * qty;
+      const totalGstPercent = cgst + sgst;
+      const lineTotal = baseTotal + (baseTotal * totalGstPercent / 100);
+
+      pendingReturnItems.push({
+        productId: parseInt(prodId),
+        name: prodName,
+        batchNumber: batchNo,
+        quantity: qty,
+        refundUnitPaise: Math.round(price * 100),
+        cgstPercent: cgst,
+        sgstPercent: sgst,
+        lineTotalPaise: Math.round(lineTotal * 100)
+      });
+      
+      searchInput.value = '';
+      document.getElementById('return-item-id').value = '';
+      batchSelect.innerHTML = '<option value="">-- Select Product First --</option>';
+      batchSelect.disabled = true;
+      document.getElementById('return-item-qty').value = '';
+      document.getElementById('return-item-price').value = '';
+      document.getElementById('return-item-cgst').value = '0';
+      document.getElementById('return-item-sgst').value = '0';
+      
+      renderReturnItems();
+    };
+    
+    document.getElementById('btn-save-return').onclick = async () => {
+      const btn = document.getElementById('btn-save-return');
+      const invoiceNo = document.getElementById('return-invoice-number').value.trim();
+      if(!invoiceNo) return showToast('Debit Note Number is required', 'warning');
+      if(pendingReturnItems.length === 0) return showToast('Please add at least one item to return', 'warning');
+      
+      const totalGstPaise = Math.round((parseFloat(document.getElementById('return-total-gst').value) || 0) * 100);
+      const grandTotalPaise = Math.round((parseFloat(document.getElementById('return-grand-total').value) || 0) * 100);
+      
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      
+      const res = await window.api.purchases.addReturn({
+        supplierId,
+        returnInvoiceNumber: invoiceNo,
+        originalInvoiceNumber: document.getElementById('return-original-invoice').value.trim(),
+        totalPaise: grandTotalPaise,
+        totalGstPaise: totalGstPaise,
+        items: pendingReturnItems
+      });
+      
+      if(res.success) {
+        showToast('Purchase return (Debit Note) saved successfully', 'success');
+        closeModal('modal-purchase-return');
+        loadSuppliers();
+      } else {
+        showToast('Error saving return: ' + res.error, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Save Return';
+      }
+    };
+    
+    openModal('modal-purchase-return');
+  }
+
+  function renderReturnItems() {
+    const tbody = document.getElementById('return-items-tbody');
+    let totalBase = 0;
+    let totalGst = 0;
+    let grandTotal = 0;
+    
+    if(pendingReturnItems.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">No products added yet</td></tr>';
+      document.getElementById('return-total-gst').value = '0.00';
+      document.getElementById('return-grand-total').value = '0.00';
+      return;
+    }
+    
+    tbody.innerHTML = pendingReturnItems.map((item, idx) => {
+      const baseTotalPaise = item.quantity * item.refundUnitPaise;
+      const gstAmountPaise = item.lineTotalPaise - baseTotalPaise;
+      totalBase += baseTotalPaise;
+      totalGst += gstAmountPaise;
+      grandTotal += item.lineTotalPaise;
+      const totalGstPercent = item.cgstPercent + item.sgstPercent;
+      
+      return `
+        <tr>
+          <td><div style="font-weight:600;">${item.name}</div></td>
+          <td><span class="badge badge-info">${item.batchNumber}</span></td>
+          <td style="text-align:right;">${item.quantity}</td>
+          <td style="text-align:right;">₹${(item.refundUnitPaise/100).toFixed(2)}</td>
+          <td style="text-align:right;">${totalGstPercent}%<br><span style="font-size:10px; color:var(--text-muted);">₹${(gstAmountPaise/100).toFixed(2)}</span></td>
+          <td style="text-align:right; font-weight:700;">₹${(item.lineTotalPaise/100).toFixed(2)}</td>
+          <td><button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="SuppliersModule.removeReturnItem(${idx})">🗑️</button></td>
+        </tr>
+      `;
+    }).join('');
+    
+    document.getElementById('return-total-gst').value = (totalGst/100).toFixed(2);
+    document.getElementById('return-grand-total').value = (grandTotal/100).toFixed(2);
+  }
+  
+  function removeReturnItem(idx) {
+    pendingReturnItems.splice(idx, 1);
+    renderReturnItems();
+  }
+
   return {
     init,
     addPurchaseItemSubmit,
-    viewPurchaseDetails
+    viewPurchaseDetails,
+    removeReturnItem
   };
 })();

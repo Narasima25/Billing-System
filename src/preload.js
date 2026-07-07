@@ -41,7 +41,7 @@ contextBridge.exposeInMainWorld('api', {
     hardDelete: (id) => ipcRenderer.invoke('suppliers:hard-delete', id),
     restore: (id) => ipcRenderer.invoke('suppliers:restore', id),
     getPurchases: (id) => ipcRenderer.invoke('suppliers:get-purchases', id),
-    getLedger: () => ipcRenderer.invoke('suppliers:get-ledger'),
+    getLedger: (month) => ipcRenderer.invoke('suppliers:get-ledger', month),
   },
 
   // ─── Products ────────────────────────────────────────────────────────
@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('api', {
     add: (data) => ipcRenderer.invoke('products:add', data),
     update: (data) => ipcRenderer.invoke('products:update', data),
     delete: (id) => ipcRenderer.invoke('products:delete', id),
+    getBatches: (productId) => ipcRenderer.invoke('products:get-batches', productId),
   },
 
 
@@ -90,9 +91,12 @@ contextBridge.exposeInMainWorld('api', {
 
   purchases: {
     add: (data) => ipcRenderer.invoke('purchases:add', data),
+    checkInvoice: (data) => ipcRenderer.invoke('purchases:check-invoice', data),
     getAll: (params) => ipcRenderer.invoke('purchases:get-all', params),
     getDetails: (id) => ipcRenderer.invoke('purchases:get-details', id),
     delete: (id) => ipcRenderer.invoke('purchases:delete', id),
+    addReturn: (data) => ipcRenderer.invoke('purchases:return:add', data),
+    getReturns: (supplierId) => ipcRenderer.invoke('purchases:return:get-all', supplierId),
   },
 
   // ─── Dashboard ───────────────────────────────────────────────────────
