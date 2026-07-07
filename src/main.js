@@ -13,12 +13,27 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 app.commandLine.appendSwitch('disable-smooth-scrolling'); // Saves CPU on scrolling
 app.commandLine.appendSwitch('wm-window-animations-disabled'); // Disables window animations
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache'); // Suppress Access is denied Gpu Cache Creation failed
 // app.commandLine.appendSwitch('disable-gpu-compositing'); // Uncomment if glitches still occur
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-  app.quit();
-}
+const { autoUpdater } = require('electron-updater');
+
+autoUpdater.on('update-available', () => {
+  console.log('Update available.');
+});
+autoUpdater.on('update-downloaded', () => {
+  console.log('Update downloaded. Prompting user to install.');
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'Update Ready',
+    message: 'A new version has been downloaded. Restart the application to apply the updates.',
+    buttons: ['Restart', 'Later']
+  }).then((result) => {
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+});
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
@@ -138,6 +153,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   await startDatabase();
   createWindow();
+  autoUpdater.checkForUpdatesAndNotify();
 });
 
 app.on('window-all-closed', () => {
@@ -330,10 +346,13 @@ ipcMain.handle('suppliers:delete', async (_e, id) => {
 
 ipcMain.handle('suppliers:hard-delete', async (_e, id) => {
   try {
-    const prodCount = queryOne("SELECT COUNT(*) as cnt FROM products WHERE supplier_id = ?", [id]);
-    if (prodCount && prodCount.cnt > 0) {
-      return { success: false, error: `Cannot permanently delete: Supplier is linked to ${prodCount.cnt} products.` };
+    const activeProdCount = queryOne("SELECT COUNT(*) as cnt FROM products WHERE supplier_id = ? AND is_active = 1", [id]);
+    if (activeProdCount && activeProdCount.cnt > 0) {
+      return { success: false, error: `Cannot permanently delete: Supplier is linked to ${activeProdCount.cnt} active products.` };
     }
+    
+    runSql("UPDATE products SET supplier_id = NULL WHERE supplier_id = ? AND is_active = 0", [id]);
+
     const purCount = queryOne("SELECT COUNT(*) as cnt FROM purchases WHERE supplier_id = ?", [id]);
     if (purCount && purCount.cnt > 0) {
       return { success: false, error: `Cannot permanently delete: Supplier has ${purCount.cnt} purchase records.` };
@@ -496,19 +515,35 @@ ipcMain.handle('products:add', async (_e, data) => {
 
 ipcMain.handle('products:update', async (_e, data) => {
   try {
+    const existingProduct = queryOne("SELECT stock_quantity FROM products WHERE id = ?", [data.id]);
+    
     runSql(
       `UPDATE products SET product_name=?, category_id=?, brand=?, supplier_id=?,
         base_price_paise=?, scheme_discount_paise=?, purchase_price_paise=?, selling_price_paise=?, gst_percent=?, hsn_code=?,
-        minimum_stock_level=?, description=?, updated_at=datetime('now','localtime')
+        minimum_stock_level=?, stock_quantity=?, description=?, updated_at=datetime('now','localtime')
        WHERE id=?`,
       [
         data.productName, data.categoryId || null, data.brand || '',
         data.supplierId || null, data.basePricePaise ?? 0, data.schemeDiscountPaise ?? 0,
         data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0,
-        data.gstPercent ?? 0, data.hsnCode || '', data.minimumStockLevel ?? 5,
+        data.gstPercent ?? 0, data.hsnCode || '', data.minimumStockLevel ?? 5, data.stockQuantity ?? 0,
         data.description || '', data.id
       ]
     );
+
+    if (existingProduct) {
+      const oldStock = existingProduct.stock_quantity || 0;
+      const newStock = data.stockQuantity || 0;
+      const diff = newStock - oldStock;
+      
+      if (diff !== 0) {
+        const type = diff > 0 ? 'add' : 'remove';
+        runSql(
+          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, ?, ?, 'Direct Edit')",
+          [data.id, type, Math.abs(diff)]
+        );
+      }
+    }
 
     if (data.batchNumber || data.expiryDate) {
       if (data.batchNumber) {
@@ -580,17 +615,45 @@ ipcMain.handle('inventory:stock-in', async (_e, { barcode, quantity, userId, bat
 
 ipcMain.handle('inventory:adjust', async (_e, { productId, type, quantity, reason, userId }) => {
   try {
+    const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [productId]);
+    if (!prod) return { success: false, error: 'Product not found' };
+
     if (type === 'add') {
       runSql("UPDATE products SET stock_quantity = stock_quantity + ?, updated_at=datetime('now','localtime') WHERE id = ?",
         [quantity, productId]);
+        
+      // Add a default batch for this manual addition
+      runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+        [productId, 'ADJ-' + Date.now().toString().slice(-4), '', quantity, prod.purchase_price_paise, prod.selling_price_paise]);
+
     } else {
       // Check current stock
-      const product = queryOne("SELECT stock_quantity FROM products WHERE id = ?", [productId]);
-      if (!product || product.stock_quantity < quantity) {
+      if (prod.stock_quantity < quantity) {
         return { success: false, error: 'Insufficient stock for reduction' };
       }
       runSql("UPDATE products SET stock_quantity = stock_quantity - ?, updated_at=datetime('now','localtime') WHERE id = ?",
         [quantity, productId]);
+        
+      // Deduct from batches using FIFO logic
+      let remainingQtyToDeduct = quantity;
+      const batches = db.prepare(`
+        SELECT * FROM product_batches 
+        WHERE product_id = ? AND quantity > 0 
+        ORDER BY 
+          CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
+          created_at ASC
+      `).all(productId);
+
+      for (const batch of batches) {
+        if (remainingQtyToDeduct <= 0) break;
+        if (batch.quantity >= remainingQtyToDeduct) {
+          runSql("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?", [remainingQtyToDeduct, batch.id]);
+          remainingQtyToDeduct = 0;
+        } else {
+          remainingQtyToDeduct -= batch.quantity;
+          runSql("UPDATE product_batches SET quantity = 0 WHERE id = ?", [batch.id]);
+        }
+      }
     }
 
     runSql(
@@ -757,18 +820,24 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
 
       // Calculate totals
       for (const item of items) {
-        const lineTotal = item.unitPricePaise * item.quantity;
-        subtotalPaise += lineTotal;
+        const itemDiscount = parseInt(item.discountPaise) || 0;
+        const lineTotal = Math.max(0, (item.unitPricePaise * item.quantity) - itemDiscount);
 
         if (item.gstPercent > 0) {
-          const gstAmount = Math.round(lineTotal * item.gstPercent / 100);
+          const taxableValue = Math.round((lineTotal * 100) / (100 + item.gstPercent));
+          const gstAmount = lineTotal - taxableValue;
+
+          subtotalPaise += taxableValue;
+
           if (isInterState) {
             totalIgstPaise += gstAmount;
           } else {
             const halfGst = Math.round(gstAmount / 2);
             totalCgstPaise += halfGst;
-            totalSgstPaise += halfGst;
+            totalSgstPaise += (gstAmount - halfGst);
           }
+        } else {
+          subtotalPaise += lineTotal;
         }
       }
 
@@ -918,7 +987,7 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
             `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, free_quantity, unit_price_paise, purchase_price_paise, discount_paise, gst_percent, hsn_code, line_total_paise, batch_id)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).run(
-            saleId, item.productId, item.productName, item.barcode, qtyToDeductFromBatch - appliedFreeQty, appliedFreeQty,
+            saleId, item.productId, item.productName, item.barcode, billedQtyForBatch, appliedFreeQty,
             item.unitPricePaise, batchPurchasePrice, appliedDiscount, item.gstPercent || 0, item.hsnCode || '', lineTotalPart - appliedDiscount, batchId
           );
         }
@@ -1021,26 +1090,30 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, use
       // Restore inventory and sale items
       const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(originalSale.id);
       for (const item of saleItems) {
+        const freeQty = item.free_quantity || 0;
+        const discountPaise = item.discount_paise || 0;
+        const totalQuantityToRestore = item.quantity + freeQty;
+
         // Insert negative sale item
         db.prepare(
-          `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, unit_price_paise, purchase_price_paise, gst_percent, hsn_code, line_total_paise, batch_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, free_quantity, unit_price_paise, purchase_price_paise, discount_paise, gst_percent, hsn_code, line_total_paise, batch_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
-          returnSaleId, item.product_id, item.product_name, item.barcode, -item.quantity,
-          item.unit_price_paise, item.purchase_price_paise, item.gst_percent, item.hsn_code, -item.line_total_paise, item.batch_id
+          returnSaleId, item.product_id, item.product_name, item.barcode, -item.quantity, -freeQty,
+          item.unit_price_paise, item.purchase_price_paise, -discountPaise, item.gst_percent, item.hsn_code, -item.line_total_paise, item.batch_id
         );
 
         // Re-add to inventory
-        db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(item.quantity, item.product_id);
+        db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.product_id);
 
         // Log inventory adjustment
         db.prepare(
           "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'add', ?, ?, ?)"
-        ).run(item.product_id, item.quantity, `Return against ${receiptNum}`, userId || null);
+        ).run(item.product_id, totalQuantityToRestore, `Return against ${receiptNum}`, userId || null);
 
         // Put quantity back in batch if applicable
         if (item.batch_id) {
-          db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(item.quantity, item.batch_id);
+          db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.batch_id);
         }
       }
 
@@ -1057,12 +1130,23 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, use
 
 // ─── PURCHASES ───────────────────────────────────────────────────────────────
 
-ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceNumber, items, notes, gstPaidPaise, status, amountPaidPaise, dueDate, attachmentPath }) => {
+ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceNumber, items, notes, gstPaidPaise, status, amountPaidPaise, dueDate, attachmentPath, draftId }) => {
   try {
     const purchaseTransaction = db.transaction(() => {
+      if (draftId) {
+        db.prepare("DELETE FROM purchase_items WHERE purchase_id = ?").run(draftId);
+        db.prepare("DELETE FROM purchases WHERE id = ?").run(draftId);
+      }
+
       let totalPaise = 0;
       for (const item of items) {
-        totalPaise += item.purchasePricePaise * item.quantity;
+        if (item.explicitLineTotalPaise !== undefined) {
+          totalPaise += item.explicitLineTotalPaise;
+        } else if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
+          totalPaise += Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
+        } else {
+          totalPaise += item.purchasePricePaise * item.quantity;
+        }
       }
 
       const pStatus = status || 'Paid';
@@ -1085,18 +1169,20 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
           productId = existing.id;
           if (pStatus !== 'Draft') {
             // Update existing product with latest prices and HSN
+            const perUnitSchemeDisc = item.quantity > 0 ? Math.round((item.schemeDiscountPaise ?? 0) / item.quantity) : 0;
             db.prepare(
               "UPDATE products SET base_price_paise = ?, scheme_discount_paise = ?, purchase_price_paise = ?, selling_price_paise = ?, hsn_code = ?, updated_at = datetime('now','localtime') WHERE id = ?"
-            ).run(item.basePricePaise ?? 0, item.schemeDiscountPaise ?? 0, item.purchasePricePaise, item.sellingPricePaise, item.hsnCode, productId);
+            ).run(item.basePricePaise ?? 0, perUnitSchemeDisc, item.purchasePricePaise, item.sellingPricePaise, item.hsnCode, productId);
           }
         } else {
           // Create new product
+          const perUnitSchemeDisc = item.quantity > 0 ? Math.round((item.schemeDiscountPaise ?? 0) / item.quantity) : 0;
           const res = db.prepare(
             `INSERT INTO products (barcode, product_name, category_id, supplier_id, base_price_paise, scheme_discount_paise, purchase_price_paise, selling_price_paise, gst_percent, hsn_code, stock_quantity)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)` // Stock will be incremented below if not draft
           ).run(
             item.barcode, item.productName, item.categoryId || null, supplierId,
-            item.basePricePaise ?? 0, item.schemeDiscountPaise ?? 0,
+            item.basePricePaise ?? 0, perUnitSchemeDisc,
             item.purchasePricePaise, item.sellingPricePaise, (item.cgstPercent + item.sgstPercent), item.hsnCode
           );
           productId = res.lastInsertRowid;
@@ -1104,7 +1190,12 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
 
         const freeQuantity = parseInt(item.freeQuantity) || 0;
         const totalQuantityToStock = item.quantity + freeQuantity;
-        const lineTotal = item.purchasePricePaise * item.quantity;
+        let lineTotal = 0;
+        if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
+          lineTotal = Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
+        } else {
+          lineTotal = item.purchasePricePaise * item.quantity;
+        }
 
         // Insert Purchase Item
         db.prepare(

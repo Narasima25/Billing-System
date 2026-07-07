@@ -102,14 +102,29 @@ const SuppliersModule = (() => {
       const finalPrice = Math.max(0, (base * qty) - disc);
       document.getElementById('pi-purchase-price').value = finalPrice.toFixed(2);
     };
+
+    const inverseCalcBasePrice = () => {
+      const finalPrice = parseFloat(document.getElementById('pi-purchase-price').value) || 0;
+      const disc = parseFloat(document.getElementById('pi-scheme-disc').value) || 0;
+      const qty = parseInt(document.getElementById('pi-qty').value) || 1;
+      const base = (finalPrice + disc) / qty;
+      document.getElementById('pi-base-price').value = base.toFixed(2);
+    };
+
     let calcTimer;
     const debouncedCalc = () => {
       clearTimeout(calcTimer);
       calcTimer = setTimeout(calcFinalPurchasePrice, 200);
     };
+    const debouncedInverseCalc = () => {
+      clearTimeout(calcTimer);
+      calcTimer = setTimeout(inverseCalcBasePrice, 200);
+    };
+
     document.getElementById('pi-base-price').addEventListener('input', debouncedCalc);
     document.getElementById('pi-scheme-disc').addEventListener('input', debouncedCalc);
     document.getElementById('pi-qty').addEventListener('input', debouncedCalc);
+    document.getElementById('pi-purchase-price').addEventListener('input', debouncedInverseCalc);
   }
 
   async function loadSuppliers() {
@@ -245,10 +260,11 @@ const SuppliersModule = (() => {
       div.innerHTML = '<p class="text-muted" style="padding:20px;text-align:center;">No purchase history</p>';
     } else {
       div.innerHTML = `<div class="data-table-wrap"><table class="data-table"><thead><tr>
-        <th>Invoice #</th><th>Total</th><th>GST Paid</th><th>Items</th><th>Date</th>
+        <th>Invoice #</th><th>Status</th><th>Total</th><th>GST Paid</th><th>Items</th><th>Date</th>
       </tr></thead><tbody>` + purchases.map(p => `
         <tr style="cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='var(--bg-alt)'" onmouseout="this.style.background=''" onclick="SuppliersModule.viewPurchaseDetails(${p.id}, '${name.replace(/'/g, "\\'").replace(/"/g, "&quot;")}', '${(p.invoice_number || '').replace(/'/g, "\\'").replace(/"/g, "&quot;")}', '${p.created_at}', ${p.total_paise}, '${p.status}')">
         <td class="fw-700 font-mono text-sm">${p.invoice_number || '—'}</td>
+        <td><span class="badge ${p.status === 'Draft' ? 'badge-amber' : (p.status === 'Paid' ? 'badge-green' : 'badge-blue')}">${p.status || 'Paid'}</span></td>
         <td class="fw-700 text-teal">${formatRupees(p.total_paise)}</td>
         <td class="text-sm">${formatRupees(p.gst_paid_paise || 0)}</td>
         <td>${p.item_count}</td>
@@ -284,6 +300,19 @@ const SuppliersModule = (() => {
         viewAttachBtn.onclick = null;
       }
       
+      const resumeBtn = document.getElementById('pd-resume-draft');
+      if (status === 'Draft') {
+        resumeBtn.style.display = 'block';
+        resumeBtn.onclick = () => {
+          closeModal('modal-purchase-details');
+          closeModal('modal-supplier-history');
+          resumePurchaseDraft(purchaseId, supplierName, invoiceNo, result.purchase, result.items);
+        };
+      } else {
+        resumeBtn.style.display = 'none';
+        resumeBtn.onclick = null;
+      }
+      
       const tbody = document.getElementById('pd-items-tbody');
       if (result.items.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:15px;">No items found</td></tr>';
@@ -302,7 +331,7 @@ const SuppliersModule = (() => {
               <td class="text-muted" style="text-align:right;">${item.free_quantity || 0}</td>
               <td class="text-sm" style="text-align:right;">${formatRupees(item.base_cost_paise || 0)}</td>
               <td class="text-sm" style="text-align:right;">${formatRupees(item.scheme_discount_paise || 0)}</td>
-              <td class="fw-700" style="text-align:right;">${formatRupees(item.unit_cost_paise)}</td>
+              <td class="fw-700" style="text-align:right; display:none;">${formatRupees(item.unit_cost_paise)}</td>
               <td class="text-sm text-teal" style="text-align:right;">${formatRupees(item.selling_price_paise || 0)}</td>
               <td class="text-sm" style="text-align:right;">${item.cgst_percent}% / ${item.sgst_percent}%</td>
               <td class="fw-700 text-teal" style="text-align:right;">${formatRupees(item.line_total_paise + Math.round(item.line_total_paise * ((item.cgst_percent + item.sgst_percent) / 100)))}</td>
@@ -339,6 +368,7 @@ const SuppliersModule = (() => {
   async function openAddPurchase(supplierId, supplierName, supplierGstin) {
     try {
       document.getElementById('purchase-supplier-id').value = supplierId;
+      document.getElementById('purchase-draft-id').value = '';
       document.getElementById('purchase-supplier-name').value = supplierName;
       document.getElementById('purchase-invoice-number').value = '';
       document.getElementById('purchase-supplier-gstin').value = supplierGstin || '';
@@ -375,6 +405,69 @@ const SuppliersModule = (() => {
       }, 350);
     } catch (err) {
       alert("Error opening modal: " + err.message + "\n" + err.stack);
+    }
+  }
+
+  async function resumePurchaseDraft(purchaseId, supplierName, invoiceNo, purchaseObj, itemsArray) {
+    try {
+      document.getElementById('purchase-supplier-id').value = purchaseObj.supplier_id;
+      document.getElementById('purchase-draft-id').value = purchaseId;
+      document.getElementById('purchase-supplier-name').value = supplierName;
+      document.getElementById('purchase-invoice-number').value = invoiceNo || '';
+      document.getElementById('purchase-supplier-gstin').value = purchaseObj.supplier_gstin || '';
+      document.getElementById('purchase-status').value = 'Paid';
+      document.getElementById('purchase-amount-paid').value = (purchaseObj.amount_paid_paise / 100) || '';
+      document.getElementById('purchase-due-date').value = purchaseObj.due_date || '';
+      document.getElementById('purchase-attachment').value = purchaseObj.attachment_path || '';
+      document.getElementById('purchase-continuous-scan').checked = false;
+      
+      if (purchaseObj.attachment_path) {
+        document.getElementById('upload-empty-state').style.display = 'none';
+        document.getElementById('upload-attached-state').style.display = '';
+        const parts = purchaseObj.attachment_path.split(/[\\/]/);
+        document.getElementById('upload-filename').textContent = parts[parts.length-1];
+      } else {
+        document.getElementById('upload-empty-state').style.display = '';
+        document.getElementById('upload-attached-state').style.display = 'none';
+      }
+      
+      clearItemFields();
+      
+      pendingPurchaseItems = itemsArray.map(item => ({
+        barcode: item.barcode || '',
+        productName: item.product_name,
+        categoryId: item.category_id || '',
+        quantity: item.quantity,
+        freeQuantity: item.free_quantity || 0,
+        basePricePaise: item.base_cost_paise || 0,
+        schemeDiscountPaise: item.scheme_discount_paise || 0,
+        purchasePricePaise: item.unit_cost_paise,
+        sellingPricePaise: item.selling_price_paise,
+        cgstPercent: item.cgst_percent,
+        sgstPercent: item.sgst_percent,
+        hsnCode: item.hsn_code || ''
+      }));
+      
+      updatePurchaseTotal();
+      renderPurchaseItems();
+      
+      try {
+        const cats = await window.api.categories.getAll();
+        const catSelect = document.getElementById('pi-category');
+        catSelect.innerHTML = '<option value="">— Select —</option>' +
+          cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      } catch (e) {
+        console.error(e);
+      }
+      
+      openModal('modal-add-purchase');
+      setTimeout(() => {
+        const invField = document.getElementById('purchase-invoice-number');
+        if (invField) invField.focus();
+        if (typeof lucide !== 'undefined') lucide.createIcons({ node: document.getElementById('modal-add-purchase') });
+      }, 350);
+    } catch (err) {
+      alert("Error resuming draft: " + err.message + "\n" + err.stack);
     }
   }
 
@@ -459,12 +552,13 @@ const SuppliersModule = (() => {
     const freeQty = parseInt(document.getElementById('pi-free-qty').value) || 0;
     const basePrice = parseFloat(document.getElementById('pi-base-price').value) || 0;
     const schemeDisc = parseFloat(document.getElementById('pi-scheme-disc').value) || 0;
-    const purchasePrice = qty > 0 ? Math.max(0, (basePrice * qty - schemeDisc) / qty) : 0;
+    const finalPurchase = parseFloat(document.getElementById('pi-purchase-price').value) || 0;
+    const purchasePrice = qty > 0 ? finalPurchase / qty : 0;
     const sellingPrice = parseFloat(document.getElementById('pi-selling-price').value) || 0;
     const cgst = parseFloat(document.getElementById('pi-cgst').value) || 0;
     const sgst = parseFloat(document.getElementById('pi-sgst').value) || 0;
 
-    if (!barcode || !name || qty <= 0 || purchasePrice < 0 || sellingPrice <= 0) {
+    if (!barcode || !name || qty <= 0 || finalPurchase < 0 || sellingPrice <= 0) {
       showToast('Please fill all required fields correctly', 'warning');
       return;
     }
@@ -496,6 +590,7 @@ const SuppliersModule = (() => {
         basePricePaise: Math.round(basePrice * 100),
         schemeDiscountPaise: Math.round(schemeDisc * 100),
         purchasePricePaise: purchasePricePaise,
+        explicitLineTotalPaise: Math.round(finalPurchase * 100),
         sellingPricePaise: Math.round(sellingPrice * 100),
         cgstPercent: cgst,
         sgstPercent: sgst
@@ -515,6 +610,36 @@ const SuppliersModule = (() => {
   // Make global for inline HTML onclick handlers
   window.removePurchaseItem = removePurchaseItem;
 
+  function updatePurchaseItemField(index, field, value) {
+    if (field === 'quantity') {
+      pendingPurchaseItems[index].quantity = parseInt(value) || 0;
+    } else if (field === 'freeQuantity') {
+      pendingPurchaseItems[index].freeQuantity = parseInt(value) || 0;
+    } else if (field === 'purchasePricePaise') {
+      const newUnitPaise = Math.round((parseFloat(value) || 0) * 100);
+      pendingPurchaseItems[index].purchasePricePaise = newUnitPaise;
+      pendingPurchaseItems[index].basePricePaise = newUnitPaise;
+      pendingPurchaseItems[index].schemeDiscountPaise = 0;
+      pendingPurchaseItems[index].explicitLineTotalPaise = undefined;
+      pendingPurchaseItems[index].explicitLineGrandTotalPaise = undefined;
+    } else if (field === 'basePricePaise') {
+      const newUnitPaise = Math.round((parseFloat(value) || 0) * 100);
+      pendingPurchaseItems[index].basePricePaise = newUnitPaise;
+      pendingPurchaseItems[index].explicitLineTotalPaise = undefined;
+      pendingPurchaseItems[index].explicitLineGrandTotalPaise = undefined;
+    } else if (field === 'explicitLineGrandTotalPaise') {
+      pendingPurchaseItems[index].explicitLineGrandTotalPaise = Math.round((parseFloat(value) || 0) * 100);
+    } else if (field === 'cgstPercent') {
+      pendingPurchaseItems[index].cgstPercent = parseFloat(value) || 0;
+      pendingPurchaseItems[index].explicitLineGrandTotalPaise = undefined;
+    } else if (field === 'sgstPercent') {
+      pendingPurchaseItems[index].sgstPercent = parseFloat(value) || 0;
+      pendingPurchaseItems[index].explicitLineGrandTotalPaise = undefined;
+    }
+    updatePurchaseTotal();
+  }
+  window.updatePurchaseItemField = updatePurchaseItemField;
+
   function updatePurchaseTotal() {
     const tbody = document.getElementById('purchase-items-tbody');
     let grandTotalPaise = 0;
@@ -522,23 +647,48 @@ const SuppliersModule = (() => {
     let totalItems = 0;
 
     tbody.innerHTML = pendingPurchaseItems.map((item, idx) => {
-      const lineTotalPaise = item.quantity * item.purchasePricePaise;
+      let lineTotalPaise = 0;
+      if (item.explicitLineTotalPaise !== undefined) {
+        lineTotalPaise = item.explicitLineTotalPaise;
+      } else if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
+        lineTotalPaise = Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
+      } else {
+        lineTotalPaise = item.quantity * item.purchasePricePaise;
+      }
       const gstPercent = item.cgstPercent + item.sgstPercent;
       const lineGstPaise = Math.round(lineTotalPaise * (gstPercent / 100));
       
-      grandTotalPaise += lineTotalPaise + lineGstPaise; 
-      totalGstPaise += lineGstPaise;
+      let lineGrandTotalPaise = lineTotalPaise + lineGstPaise;
+      let finalLineGstPaise = lineGstPaise;
+      if (item.explicitLineGrandTotalPaise !== undefined) {
+        lineGrandTotalPaise = item.explicitLineGrandTotalPaise;
+        finalLineGstPaise = lineGrandTotalPaise - lineTotalPaise;
+      }
+      
+      grandTotalPaise += lineGrandTotalPaise; 
+      totalGstPaise += finalLineGstPaise;
       totalItems += item.quantity;
 
       return `<tr>
         <td class="font-mono text-sm">${item.barcode}</td>
         <td class="fw-700">${item.productName}</td>
         <td class="text-sm">${item.hsnCode || '—'}</td>
-        <td class="fw-700">${item.quantity}</td>
-        <td class="text-sm text-muted">${item.freeQuantity || 0}</td>
-        <td class="text-sm">${formatRupees(item.purchasePricePaise)}</td>
-        <td class="text-sm">${item.cgstPercent}% / ${item.sgstPercent}%</td>
-        <td class="fw-700 text-teal">${formatRupees(lineTotalPaise + lineGstPaise)}</td>
+        <td class="fw-700">
+          <input type="number" min="1" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.quantity}" onchange="updatePurchaseItemField(${idx}, 'quantity', this.value)">
+        </td>
+        <td class="text-sm text-muted">
+          <input type="number" min="0" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.freeQuantity || 0}" onchange="updatePurchaseItemField(${idx}, 'freeQuantity', this.value)">
+        </td>
+        <td class="text-sm">
+          ₹<input type="number" min="0" step="0.01" style="width: 70px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(item.basePricePaise / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
+        </td>
+        <td class="text-sm">
+          <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.cgstPercent}" onchange="updatePurchaseItemField(${idx}, 'cgstPercent', this.value)">% / 
+          <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.sgstPercent}" onchange="updatePurchaseItemField(${idx}, 'sgstPercent', this.value)">%
+        </td>
+        <td class="fw-700 text-teal">
+          ₹<input type="number" min="0" step="0.01" style="width: 80px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: bold; color: var(--accent-teal);" value="${(lineGrandTotalPaise / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'explicitLineGrandTotalPaise', this.value)">
+        </td>
         <td><button type="button" class="btn btn-ghost btn-sm" onclick="removePurchaseItem(${idx})" style="padding:4px;color:var(--accent-rose);">✕</button></td>
       </tr>`;
     }).join('');
@@ -572,10 +722,29 @@ const SuppliersModule = (() => {
     // Calculate total GST paid on the frontend to pass to backend
     let totalGstPaidPaise = 0;
     pendingPurchaseItems.forEach(item => {
-      const lineTotalPaise = item.quantity * item.purchasePricePaise;
+      let lineTotalPaise = 0;
+      if (item.explicitLineTotalPaise !== undefined) {
+        lineTotalPaise = item.explicitLineTotalPaise;
+      } else if (item.schemeDiscountPaise !== undefined && item.basePricePaise !== undefined) {
+        lineTotalPaise = Math.max(0, (item.quantity * item.basePricePaise) - item.schemeDiscountPaise);
+      } else {
+        lineTotalPaise = item.quantity * item.purchasePricePaise;
+      }
       const gstPercent = item.cgstPercent + item.sgstPercent;
-      totalGstPaidPaise += Math.round(lineTotalPaise * (gstPercent / 100));
+      const lineGstPaise = Math.round(lineTotalPaise * (gstPercent / 100));
+      
+      let lineGrandTotalPaise = lineTotalPaise + lineGstPaise;
+      let finalLineGstPaise = lineGstPaise;
+      if (item.explicitLineGrandTotalPaise !== undefined) {
+        lineGrandTotalPaise = item.explicitLineGrandTotalPaise;
+        finalLineGstPaise = lineGrandTotalPaise - lineTotalPaise;
+      }
+      
+      totalGstPaidPaise += finalLineGstPaise;
     });
+
+    const draftIdStr = document.getElementById('purchase-draft-id').value;
+    const draftId = draftIdStr ? parseInt(draftIdStr) : null;
 
     try {
       const result = await window.api.purchases.add({
@@ -588,10 +757,12 @@ const SuppliersModule = (() => {
         status,
         amountPaidPaise: Math.round(amountPaid * 100),
         dueDate,
-        attachmentPath
+        attachmentPath,
+        draftId
       });
 
       if (result.success) {
+        document.getElementById('purchase-draft-id').value = '';
         showToast(isDraft ? 'Purchase saved as Draft!' : 'Purchase and products saved successfully!', 'success');
         closeModal('modal-add-purchase');
         loadLedger();

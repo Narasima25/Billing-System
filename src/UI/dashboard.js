@@ -69,6 +69,25 @@ const DashboardModule = (() => {
         </div>
       </div>
 
+      ${(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin') ? `
+      <!-- Admin Insights -->
+      <div class="section-header mt-24">
+        <h2><i data-lucide="shield"></i> Admin Insights</h2>
+      </div>
+      <div class="grid-2 mb-24">
+        <div class="stat-card violet" style="cursor:pointer;" onclick="window.navigateTo('reports'); setTimeout(() => document.querySelector('[data-tab=\\'profit\\']').click(), 50)">
+          <span class="stat-icon"><i data-lucide="trending-up"></i></span>
+          <span class="stat-value text-violet" id="ds-today-profit">₹0.00</span>
+          <span class="stat-label">Today's Profit</span>
+        </div>
+        <div class="stat-card indigo" style="cursor:pointer;" onclick="window.navigateTo('reports'); setTimeout(() => document.querySelector('[data-tab=\\'reconciliation\\']').click(), 50)">
+          <span class="stat-icon"><i data-lucide="file-bar-chart-2"></i></span>
+          <span class="stat-value text-indigo">View Report</span>
+          <span class="stat-label">Daily Reconciliation</span>
+        </div>
+      </div>
+      ` : ''}
+
       <!-- Alerts Row -->
       <div id="dash-alerts" class="mb-20"></div>
 
@@ -131,6 +150,19 @@ const DashboardModule = (() => {
       }
 
       alertsDiv.innerHTML = alertsHtml;
+
+      if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin') {
+        try {
+          const today = window.getToday();
+          const profitData = await window.api.reports.profit({ startDate: today, endDate: today });
+          const profitEl = document.getElementById('ds-today-profit');
+          if (profitEl) {
+            profitEl.textContent = formatRupees(profitData.totalProfitPaise || 0);
+          }
+        } catch(e) {
+          console.error('[Dashboard] error fetching profit:', e);
+        }
+      }
 
       // Recent Sales
       const tbody = document.getElementById('dash-sales-body');

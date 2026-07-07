@@ -1,12 +1,12 @@
 {
   "name": "billing-pos",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "electron .",
     "rebuild": "electron-rebuild ",
-    "package": "electron-forge package",
-    "make": "electron-forge make"
+    "build": "electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [],
   "author": "PetStore",
@@ -16,20 +16,46 @@
     "@fontsource/inter": "^5.2.8",
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "better-sqlite3": "^12.10.1",
-    "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.8.9",
     "lucide": "^1.18.0"
   },
+  "build": {
+    "appId": "com.petstore.pos",
+    "productName": "PetStore POS",
+    "files": [
+      "**/*",
+      "!out${/*}",
+      "!**/*.db",
+      "!**/*.db-shm",
+      "!**/*.db-wal",
+      "!attachments${/*}"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "src/logo.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Narasima25",
+        "repo": "Billing-System"
+      }
+    ]
+  },
   "devDependencies": {
-    "@electron-forge/cli": "^7.11.2",
-    "@electron-forge/maker-deb": "^7.11.2",
-    "@electron-forge/maker-rpm": "^7.11.2",
-    "@electron-forge/maker-squirrel": "^7.11.2",
-    "@electron-forge/maker-zip": "^7.11.2",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.11.2",
-    "@electron-forge/plugin-fuses": "^7.11.2",
     "@electron/fuses": "^1.8.0",
     "@electron/rebuild": "^4.0.4",
     "electron": "^42.4.0",
+    "electron-builder": "^26.15.3",
     "electron-packager": "^17.1.2",
     "electron-rebuilder": "^1.0.1",
     "jimp": "^1.6.1",

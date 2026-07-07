@@ -52,17 +52,6 @@ const SettingsModule = (() => {
             <button class="btn btn-secondary btn-sm" id="btn-test-print">🖨️ Test Print</button>
           </div>
 
-          <!-- Appearance -->
-          <div class="settings-section">
-            <h3>🎨 Appearance</h3>
-            <div class="toggle-wrap">
-              <div>
-                <div class="toggle-label">Dark Mode</div>
-                <div class="toggle-desc">Switch to dark theme for low-light environments</div>
-              </div>
-              <button class="toggle" id="toggle-dark-mode" type="button"></button>
-            </div>
-          </div>
         </div>
 
         <!-- Right Column -->
@@ -160,7 +149,6 @@ const SettingsModule = (() => {
     // Settings panel click events
     panel.addEventListener('click', (e) => {
       if (e.target.id === 'btn-test-print') testPrint();
-      if (e.target.id === 'toggle-dark-mode') toggleDarkMode();
       if (e.target.id === 'btn-backup-export') exportBackup();
       if (e.target.id === 'btn-backup-import') importBackup();
       if (e.target.id === 'btn-add-user-settings') openUserModal();
@@ -187,12 +175,6 @@ const SettingsModule = (() => {
       const lastBackup = settings.last_backup;
       document.getElementById('set-last-backup').textContent = lastBackup ? formatDate(lastBackup) : 'Never';
 
-      // Dark mode
-      const isDark = settings.theme === 'dark';
-      document.body.classList.toggle('dark', isDark);
-      const toggle = document.getElementById('toggle-dark-mode');
-      if (toggle) toggle.classList.toggle('on', isDark);
-
       // Store & GST Config
       document.getElementById('set-store-name').value = settings.store_name || '';
       document.getElementById('set-store-address').value = settings.store_address || '';
@@ -203,15 +185,6 @@ const SettingsModule = (() => {
     } catch (err) {
       console.error('[Settings] load error:', err);
     }
-  }
-
-  async function toggleDarkMode() {
-    const isDark = !document.body.classList.contains('dark');
-    document.body.classList.toggle('dark', isDark);
-    const toggle = document.getElementById('toggle-dark-mode');
-    if (toggle) toggle.classList.toggle('on', isDark);
-    await window.api.settings.set({ key: 'theme', value: isDark ? 'dark' : 'light' });
-    showToast(isDark ? 'Dark mode enabled' : 'Light mode enabled', 'info');
   }
 
   async function saveStoreConfig() {

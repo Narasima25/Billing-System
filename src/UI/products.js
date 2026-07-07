@@ -59,7 +59,7 @@ const ProductsModule = (() => {
                 <th>Barcode</th>
                 <th>Category</th>
                 <th>HSN</th>
-                <th>Purchase ₹</th>
+                <th>Base ₹</th>
                 <th>Selling ₹</th>
                 <th>GST%</th>
                 <th>Stock</th>
@@ -162,6 +162,63 @@ const ProductsModule = (() => {
     };
     document.getElementById('prod-base-price').addEventListener('input', calcFinalPrice);
     document.getElementById('prod-scheme-disc').addEventListener('input', calcFinalPrice);
+
+    // Toggle fields based on selected category (Hide details for "Services")
+    document.getElementById('prod-category').addEventListener('change', (e) => {
+      const select = e.target;
+      const catName = select.options[select.selectedIndex]?.text.toLowerCase() || '';
+      const isService = catName.includes('service');
+
+      const barcodeGroup = document.getElementById('prod-barcode').closest('.form-group');
+      const hsnGroup = document.getElementById('prod-hsn').closest('.form-group');
+      const gstGroup = document.getElementById('prod-gst').closest('.form-group');
+      const stockGroup = document.getElementById('prod-stock').closest('.form-group');
+      const minStockGroup = document.getElementById('prod-min-stock').closest('.form-group');
+      const basePriceGroup = document.getElementById('prod-base-price').closest('.form-group');
+      const schemeDiscGroup = document.getElementById('prod-scheme-disc').closest('.form-group');
+      const purchasePriceGroup = document.getElementById('prod-purchase-price').closest('.form-group');
+      const brandGroup = document.getElementById('prod-brand').closest('.form-group');
+      const supplierGroup = document.getElementById('prod-supplier').closest('.form-group');
+
+      if (isService) {
+        if (!document.getElementById('prod-barcode').value || !document.getElementById('product-edit-id').value) {
+           document.getElementById('prod-barcode').value = 'SRV-' + Date.now();
+        }
+        document.getElementById('prod-hsn').value = 'NA';
+        document.getElementById('prod-gst').value = '0';
+        document.getElementById('prod-stock').value = '0';
+        document.getElementById('prod-min-stock').value = '0';
+
+        barcodeGroup.style.display = 'none';
+        hsnGroup.style.display = 'none';
+        gstGroup.style.display = 'none';
+        stockGroup.style.display = 'none';
+        minStockGroup.style.display = 'none';
+        basePriceGroup.style.display = 'none';
+        schemeDiscGroup.style.display = 'none';
+        purchasePriceGroup.style.display = 'none';
+        brandGroup.style.display = 'none';
+        supplierGroup.style.display = 'none';
+      } else {
+        if (document.getElementById('prod-barcode').value.startsWith('SRV-') && !document.getElementById('product-edit-id').value) {
+            document.getElementById('prod-barcode').value = '';
+        }
+        if (document.getElementById('prod-hsn').value === 'NA') {
+            document.getElementById('prod-hsn').value = '';
+        }
+
+        barcodeGroup.style.display = '';
+        hsnGroup.style.display = '';
+        gstGroup.style.display = '';
+        stockGroup.style.display = '';
+        minStockGroup.style.display = '';
+        basePriceGroup.style.display = '';
+        schemeDiscGroup.style.display = '';
+        purchasePriceGroup.style.display = '';
+        brandGroup.style.display = '';
+        supplierGroup.style.display = '';
+      }
+    });
   }
 
   async function loadDropdowns() {
@@ -202,6 +259,8 @@ const ProductsModule = (() => {
       }
 
       tbody.innerHTML = result.products.map(p => {
+        const isService = (p.category_name || '').toLowerCase().includes('service') || (p.barcode || '').startsWith('SRV-');
+        
         let stockClass = 'ok';
         if (p.stock_quantity === 0) stockClass = 'critical';
         else if (p.stock_quantity <= p.minimum_stock_level) stockClass = 'low';
@@ -214,14 +273,14 @@ const ProductsModule = (() => {
           <td><span class="font-mono text-sm">${p.barcode}</span></td>
           <td>${p.category_name ? `<span class="badge badge-teal">${p.category_name}</span>` : '<span class="text-muted">—</span>'}</td>
           <td><span class="font-mono text-sm">${p.hsn_code || '—'}</span></td>
-          <td>${formatRupees(p.purchase_price_paise)}</td>
+          <td>${formatRupees(p.base_price_paise)}</td>
           <td class="fw-700">${formatRupees(p.selling_price_paise)}</td>
           <td>${p.gst_percent || 0}%</td>
-          <td><span class="stock-badge ${stockClass}">${p.stock_quantity}</span></td>
+          <td>${isService ? '<span class="text-muted">—</span>' : `<span class="stock-badge ${stockClass}">${p.stock_quantity}</span>`}</td>
           <td>
             <div class="btn-group" style="gap:4px;">
               <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${p.id}" title="Edit">✏️</button>
-              <button class="btn btn-ghost btn-sm" data-action="adjust" data-id="${p.id}" data-name="${p.product_name}" title="Adjust Stock">📦</button>
+              ${isService ? '' : `<button class="btn btn-ghost btn-sm" data-action="adjust" data-id="${p.id}" data-name="${p.product_name}" title="Adjust Stock">📦</button>`}
               <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${p.id}" title="Delete">🗑️</button>
             </div>
           </td>
@@ -269,13 +328,17 @@ const ProductsModule = (() => {
     document.getElementById('prod-selling-price').value = product ? (product.selling_price_paise / 100).toFixed(2) : '';
     document.getElementById('prod-gst').value = product ? (product.gst_percent || '') : '18';
     document.getElementById('prod-hsn').value = product ? (product.hsn_code || '') : '';
-    document.getElementById('prod-stock').value = product ? '' : '0';
-    document.getElementById('prod-stock').disabled = !!product;
+    document.getElementById('prod-stock').value = product ? product.stock_quantity : '0';
+    document.getElementById('prod-stock').disabled = false;
     document.getElementById('prod-min-stock').value = product ? product.minimum_stock_level : '5';
     document.getElementById('prod-desc').value = product ? (product.description || '') : '';
 
     openModal('modal-product');
-    setTimeout(() => document.getElementById(product ? 'prod-name' : 'prod-barcode').focus(), 350);
+    setTimeout(() => {
+      document.getElementById('prod-category').dispatchEvent(new Event('change'));
+      const isService = document.getElementById('prod-barcode').closest('.form-group').style.display === 'none';
+      document.getElementById((product || isService) ? 'prod-name' : 'prod-barcode').focus();
+    }, 350);
   }
 
   async function saveProduct() {

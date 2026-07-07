@@ -232,42 +232,49 @@ const BillingModule = (() => {
     document.addEventListener('keydown', async (e) => {
       if (!panel.classList.contains('active') || document.querySelector('.modal-overlay.visible')) return;
 
-      // If user is actively typing in another input (like customer search or manual search), don't intercept
-      if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement !== scanner) {
-        scanBuffer = '';
-        return;
-      }
-
       if (e.key === 'Enter') {
         let barcode = scanBuffer;
-        scanBuffer = '';
 
-        // Optimization for hardware machine scanners: They type extremely fast directly into the input.
-        // Always prefer the actual input value if focused, as it never drops characters natively.
+        // Optimization for hardware machine scanners directly in the input
         if (scanner && document.activeElement === scanner && scanner.value.trim().length > 0) {
           barcode = scanner.value.trim();
         }
 
         if (barcode && barcode.length >= 3) {
           e.preventDefault();
+          e.stopPropagation();
+          
+          // If the barcode was accidentally typed into another input natively, strip it out
+          if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement !== scanner) {
+             const val = document.activeElement.value.toString();
+             if (val && val.endsWith(barcode)) {
+               document.activeElement.value = val.slice(0, -barcode.length);
+               document.activeElement.dispatchEvent(new Event('input', { bubbles: true }));
+             }
+             document.activeElement.blur(); // Remove focus so subsequent scans don't go here
+          }
+
+          scanBuffer = '';
           if (scanner) scanner.value = '';
           await handleScan(barcode);
+          return;
         }
+
+        scanBuffer = '';
         return;
       }
 
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const currentTime = Date.now();
-        // Reset buffer if delay between keystrokes is too long (prevents garbage characters)
-        if (currentTime - lastKeyTime > 300) {
+        // Hardware scanners are extremely fast (<20ms per char). Humans are typically >50ms.
+        if (currentTime - lastKeyTime > 50) {
           scanBuffer = '';
         }
         lastKeyTime = currentTime;
 
         scanBuffer += e.key;
         clearTimeout(scanTimer);
-        // Tolerance for mobile apps that simulate typing slower
-        scanTimer = setTimeout(() => { scanBuffer = ''; }, 300);
+        scanTimer = setTimeout(() => { scanBuffer = ''; }, 100);
       }
     });
 
@@ -444,11 +451,13 @@ const BillingModule = (() => {
           resultsDiv.innerHTML = `<div class="customer-result-item text-muted">No products found</div>`;
         } else {
           resultsDiv.innerHTML = products.map((p, idx) => {
-            const isOOS = p.stock_quantity <= 0;
+            const isService = (p.category_name || '').toLowerCase().includes('service') || (p.barcode || '').startsWith('SRV-');
+            const isOOS = !isService && p.stock_quantity <= 0;
+            const stockDisplay = isService ? '' : `<div class="text-sm ${isOOS ? 'text-rose' : 'text-green'}" style="margin-top:2px;">Stock: ${p.stock_quantity}</div>`;
             return `<div class="customer-result-item" data-barcode="${p.barcode}" data-index="${idx}" style="display:flex; justify-content:space-between; align-items:center; ${isOOS ? 'opacity:0.6;' : ''}">
                <div>
                  <strong>${p.product_name}</strong> <span class="text-xs text-muted" style="margin-left:4px;">${p.barcode}</span>
-                 <div class="text-sm ${isOOS ? 'text-rose' : 'text-green'}" style="margin-top:2px;">Stock: ${p.stock_quantity}</div>
+                 ${stockDisplay}
                </div>
                <div class="fw-700">${formatRupees(p.selling_price_paise)}</div>
              </div>`;
@@ -638,9 +647,7 @@ const BillingModule = (() => {
           _stockQty: product.stock_quantity,
           supplierName: product.supplier_name || 'N/A',
           batchNumber: firstBatch ? firstBatch.batch_number : 'N/A',
-          originalCostPaise: (firstBatch && firstBatch.purchase_price_paise > 0)
-            ? firstBatch.purchase_price_paise
-            : (product.purchase_price_paise || 0),
+          originalCostPaise: product.base_price_paise || 0,
           hsnCode: product.hsn_code || '',
         });
       }
@@ -673,11 +680,11 @@ const BillingModule = (() => {
         return `
           <div class="cart-item" data-index="${idx}" style="flex-direction: column; align-items: stretch; gap: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div style="flex: 1;">
+              <div style="flex: 1; cursor: pointer;" onclick="document.getElementById('ci-details-${idx}').style.display = document.getElementById('ci-details-${idx}').style.display === 'none' ? 'flex' : 'none'" title="Click to view details & cost price">
                 <div class="ci-name">${item.productName}</div>
-                <div class="ci-barcode">${item.barcode}</div>
-                <div style="font-size: 12px; color: var(--accent-blue); margin-top: 4px; font-weight: 600;">
-                  Supplier Purchasing Price: ${formatRupees(item.originalCostPaise)}
+                <div class="ci-barcode" style="display:flex; align-items:center; gap:4px;">
+                  ${item.barcode} 
+                  <i data-lucide="chevron-down" style="width:14px; height:14px; color:var(--text-muted);"></i>
                 </div>
               </div>
               <div class="qty-control" style="margin-right: 12px; display: flex; align-items: center; gap: 4px;">
@@ -692,9 +699,12 @@ const BillingModule = (() => {
               <span class="ci-total" style="width: 80px; text-align: right; margin-right: 12px;">${formatRupees(Math.max(0, lineTotal))}</span>
               <button class="ci-remove" title="Remove">✕</button>
             </div>
-            <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 16px; border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 2px;">
+            <div id="ci-details-${idx}" style="display: none; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); align-items: center; gap: 16px; border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 2px;">
               <span style="display: flex; align-items: center;"><i data-lucide="truck" style="width:12px;height:12px;margin-right:4px;"></i> ${item.supplierName}</span>
               <span style="display: flex; align-items: center;"><i data-lucide="layers" style="width:12px;height:12px;margin-right:4px;"></i> Batch: ${item.batchNumber}</span>
+              <span style="display: flex; align-items: center; color: var(--accent-blue); font-weight: 600;">
+                Base Price: ${formatRupees(item.originalCostPaise)}
+              </span>
               
               <div style="margin-left: auto; display: flex; gap: 12px; align-items: center;">
                 <label style="display: flex; align-items: center; gap: 4px; ${!isB2B ? 'opacity: 0.5; pointer-events: none;' : ''}">
@@ -1038,12 +1048,21 @@ const BillingModule = (() => {
         const lineTotal = (item.unitPricePaise * item.quantity) - discountAmount;
 
         let taxesHtml = '';
+        let taxableValue = lineTotal;
+        let itemGst = 0;
+
+        if (item.gstPercent > 0) {
+          taxableValue = Math.round((lineTotal * 100) / (100 + item.gstPercent));
+          itemGst = lineTotal - taxableValue;
+        }
+
         if (saleResult.isInterState) {
-          const igst = Math.round(lineTotal * item.gstPercent / 100);
+          const igst = itemGst;
           taxesHtml = `<td>${item.gstPercent}%</td><td>${formatRupees(igst)}</td>`;
         } else {
-          const cgst = Math.round((lineTotal * item.gstPercent / 100) / 2);
-          taxesHtml = `<td>${item.gstPercent}%</td><td>${formatRupees(cgst)}</td><td>${formatRupees(cgst)}</td>`;
+          const cgst = Math.round(itemGst / 2);
+          const sgst = itemGst - cgst;
+          taxesHtml = `<td>${item.gstPercent}%</td><td>${formatRupees(cgst)}</td><td>${formatRupees(sgst)}</td>`;
         }
 
         return `
@@ -1055,9 +1074,9 @@ const BillingModule = (() => {
             <td style="text-align:right;">${item.freeQuantity || 0}</td>
             <td style="text-align:right;">${formatRupees(item.unitPricePaise)}</td>
             <td style="text-align:right;">${formatRupees(discountAmount)}</td>
-            <td style="text-align:right;">${formatRupees(Math.max(0, lineTotal))}</td>
+            <td style="text-align:right;">${formatRupees(taxableValue)}</td>
             ${taxesHtml}
-            <td style="text-align:right;font-weight:bold;">${formatRupees(lineTotal + Math.round(lineTotal * item.gstPercent / 100))}</td>
+            <td style="text-align:right;font-weight:bold;">${formatRupees(lineTotal)}</td>
           </tr>
         `;
       }).join('');

@@ -195,7 +195,7 @@
             <label class="form-label">Scheme Disc (₹)</label>
             <input type="number" class="form-input" id="prod-scheme-disc" placeholder="0.00" step="0.01" min="0">
           </div>
-          <div class="form-group">
+          <div class="form-group" style="display:none;">
             <label class="form-label">Final Purchase (₹)</label>
             <input type="number" class="form-input" id="prod-purchase-price" placeholder="0.00" step="0.01" min="0"
               readonly style="background:var(--bg-alt); cursor:not-allowed;">
@@ -224,7 +224,7 @@
         </div>
         <div class="form-row-3">
           <div class="form-group">
-            <label class="form-label">Opening Stock</label>
+            <label class="form-label">Quantity</label>
             <input type="number" class="form-input" id="prod-stock" placeholder="0" min="0">
           </div>
           <div class="form-group">
@@ -338,6 +338,7 @@
       <form id="form-add-purchase" onsubmit="return false;"
         style="padding: 24px 28px; max-height: calc(85vh - 140px); overflow-y: auto;">
         <input type="hidden" id="purchase-supplier-id">
+        <input type="hidden" id="purchase-draft-id">
 
         <!-- ── Section: Invoice Details ── -->
         <div style="margin-bottom: 20px;">
@@ -497,8 +498,8 @@
                 <label class="form-label"
                   style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Final
                   Purchase ₹ *</label>
-                <input type="number" class="form-input" id="pi-purchase-price" step="0.01" min="0" readonly
-                  style="padding: 7px 10px; font-size: 13px; background:var(--bg-alt); cursor:not-allowed;">
+                <input type="number" class="form-input" id="pi-purchase-price" step="0.01" min="0"
+                  style="padding: 7px 10px; font-size: 13px;">
               </div>
             </div>
             <div style="display:grid; grid-template-columns: 1.5fr 1fr 1fr auto; gap: 10px; align-items: flex-end;">
@@ -538,7 +539,7 @@
                   <th style="font-size:11px;">HSN</th>
                   <th style="width: 60px; font-size:11px;">Qty</th>
                   <th style="width: 60px; font-size:11px;">Free</th>
-                  <th style="width: 90px; font-size:11px;">Pur. Price</th>
+                  <th style="width: 90px; font-size:11px;">Base Price</th>
                   <th style="width: 100px; font-size:11px;">CGST / SGST</th>
                   <th style="width: 90px; font-size:11px;">Total</th>
                   <th style="width: 36px;"></th>
@@ -589,7 +590,8 @@
             <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-purchase')">Cancel</button>
             <button type="button" class="btn btn-secondary" id="btn-draft-purchase"
               style="border-color:var(--accent-amber); color:var(--accent-amber);">📝 Draft</button>
-            <button type="submit" form="form-add-purchase" class="btn btn-primary" id="btn-save-purchase" style="padding: 10px 24px;">✓ Save
+            <button type="submit" form="form-add-purchase" class="btn btn-primary" id="btn-save-purchase"
+              style="padding: 10px 24px;">✓ Save
               Purchase</button>
           </div>
         </div>
@@ -599,35 +601,48 @@
 
   <!-- Purchase Details Modal -->
   <div class="modal-overlay" id="modal-purchase-details">
-    <div class="modal-box" style="max-width: 900px; width:95%; max-height: 90vh; display:flex; flex-direction:column; padding:0;">
-      <div style="padding: 20px 28px; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;">
-        <h2 style="font-size: 20px; font-weight:800; color:var(--text-primary); margin:0;" id="pd-title">🧾 Purchase Details</h2>
+    <div class="modal-box"
+      style="max-width: 900px; width:95%; max-height: 90vh; display:flex; flex-direction:column; padding:0;">
+      <div
+        style="padding: 20px 28px; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;">
+        <h2 style="font-size: 20px; font-weight:800; color:var(--text-primary); margin:0;" id="pd-title">🧾 Purchase
+          Details</h2>
         <div style="display: flex; gap: 10px; align-items: center;">
-          <button id="pd-view-attachment" class="btn btn-outline btn-sm" style="display:none;">📎 View Attachment</button>
+          <button id="pd-resume-draft" class="btn btn-outline btn-sm"
+            style="display:none; border-color: var(--accent-amber); color: var(--accent-amber);">✏️ Resume
+            Draft</button>
+          <button id="pd-view-attachment" class="btn btn-outline btn-sm" style="display:none;">📎 View
+            Attachment</button>
           <button class="modal-close" onclick="closeModal('modal-purchase-details')">✕</button>
         </div>
       </div>
-      
+
       <div style="padding: 24px 28px; overflow-y:auto; flex:1;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:20px; background:var(--bg-alt); padding:16px; border-radius:var(--radius-md);">
+        <div
+          style="display:flex; justify-content:space-between; margin-bottom:20px; background:var(--bg-alt); padding:16px; border-radius:var(--radius-md);">
           <div>
-            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Invoice Number</div>
+            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">
+              Invoice Number</div>
             <div style="font-size:16px; font-weight:700; font-family:monospace;" id="pd-invoice-no"></div>
           </div>
           <div>
-            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Date</div>
+            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Date
+            </div>
             <div style="font-size:16px; font-weight:700;" id="pd-date"></div>
           </div>
           <div>
-            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Supplier</div>
+            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">
+              Supplier</div>
             <div style="font-size:16px; font-weight:700;" id="pd-supplier"></div>
           </div>
           <div>
-            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Status</div>
+            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Status
+            </div>
             <div style="font-size:16px; font-weight:700;" id="pd-status"></div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Total Value</div>
+            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Total
+              Value</div>
             <div style="font-size:18px; font-weight:800; color:var(--accent-teal);" id="pd-total"></div>
           </div>
         </div>
@@ -643,7 +658,7 @@
                 <th style="text-align:right;">Free</th>
                 <th style="text-align:right;">Base Price</th>
                 <th style="text-align:right;">Sch. Disc</th>
-                <th style="text-align:right;">Pur. Price</th>
+                <th style="text-align:right; display:none;">Pur. Price</th>
                 <th style="text-align:right;">Selling</th>
                 <th style="text-align:right;">GST</th>
                 <th style="text-align:right;">Total</th>
@@ -795,7 +810,8 @@
         <div class="modal-title"><i data-lucide="eye"></i> Receipt Preview</div>
         <button class="modal-close" onclick="closeModal('modal-receipt-preview')">✕</button>
       </div>
-      <div id="receipt-preview-content" style="background: white; padding: 20px; color: black; font-family: 'Courier New', monospace; font-size: 12px; margin-bottom: 20px; max-height: 60vh; overflow-y: auto;">
+      <div id="receipt-preview-content"
+        style="background: white; padding: 20px; color: black; font-family: 'Courier New', monospace; font-size: 12px; margin-bottom: 20px; max-height: 60vh; overflow-y: auto;">
       </div>
       <div class="modal-footer" style="justify-content: space-between;">
         <button class="btn btn-secondary" onclick="closeModal('modal-receipt-preview')">Close</button>
@@ -812,7 +828,8 @@
         <button class="modal-close" onclick="closeModal('modal-customer-history')">✕</button>
       </div>
       <div style="padding: 16px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom: 16px; background:var(--bg-alt); padding: 12px; border-radius: var(--radius-md);">
+        <div
+          style="display:flex; justify-content:space-between; margin-bottom: 16px; background:var(--bg-alt); padding: 12px; border-radius: var(--radius-md);">
           <div>
             <div class="text-sm text-muted uppercase tracking-wider">Customer Phone</div>
             <div style="font-weight:700; font-family:monospace; font-size:16px;" id="ch-phone"></div>
@@ -857,7 +874,8 @@
       </div>
       <div class="form-group">
         <label>Message Update</label>
-        <textarea id="wa-message-text" class="form-input" rows="4" placeholder="Enter your custom message here..."></textarea>
+        <textarea id="wa-message-text" class="form-input" rows="4"
+          placeholder="Enter your custom message here..."></textarea>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('modal-whatsapp-update')">Cancel</button>
@@ -879,7 +897,8 @@
       </div>
       <div class="form-group">
         <label>Message Broadcast</label>
-        <textarea id="wa-bulk-message-text" class="form-input" rows="4" placeholder="Enter your promotional message or update here..."></textarea>
+        <textarea id="wa-bulk-message-text" class="form-input" rows="4"
+          placeholder="Enter your promotional message or update here..."></textarea>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('modal-whatsapp-bulk-update')">Cancel</button>
@@ -896,7 +915,8 @@
         <button class="modal-close" onclick="closeModal('modal-loyalty-confirm')">✕</button>
       </div>
       <div style="padding: 20px 0;">
-        <p style="margin-bottom: 12px; font-size: 14px;">This purchase is over <b style="color:var(--accent-primary);">₹1,000</b>. The customer is eligible for a loyalty reward!</p>
+        <p style="margin-bottom: 12px; font-size: 14px;">This purchase is over <b
+            style="color:var(--accent-primary);">₹1,000</b>. The customer is eligible for a loyalty reward!</p>
         <p style="font-size: 14px; font-weight: 600;">Do you want to continue WITHOUT adding their phone number?</p>
       </div>
       <div class="modal-footer" style="justify-content: flex-end;">
@@ -991,12 +1011,12 @@
     window.closeModal = function (id) {
       document.getElementById(id).classList.remove('visible');
     };
-    // Close on backdrop click
-    document.querySelectorAll('.modal-overlay').forEach(modal => {
+    // Close on backdrop click (Disabled to prevent accidental data loss)
+    /* document.querySelectorAll('.modal-overlay').forEach(modal => {
       modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.classList.remove('visible');
       });
-    });
+    }); */
     // Close on Escape
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -1100,6 +1120,50 @@
       updateClock();
       if (clockInterval) clearInterval(clockInterval);
       clockInterval = setInterval(updateClock, 30000);
+
+      checkBackupStatus();
+    }
+
+    async function checkBackupStatus() {
+      try {
+        const settings = await window.api.settings.getAll();
+        const lastBackupStr = settings.last_backup;
+        let requiresBackup = false;
+
+        if (!lastBackupStr) {
+          requiresBackup = true;
+        } else {
+          const lastBackupDate = new Date(lastBackupStr);
+          const now = new Date();
+          const diffTime = Math.abs(now - lastBackupDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays >= 30) {
+            requiresBackup = true;
+          }
+        }
+
+        if (requiresBackup) {
+          alert("Monthly Backup Required!\n\nIt has been over a month since your last backup. Please save this .bak file to secure your data.");
+
+          const result = await window.api.backup.export();
+          if (result.success) {
+            const res = await fetch(`data:application/octet-stream;base64,${result.data}`);
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `petstore-backup-${getToday()}.bak`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showToast(`Backup automatically exported`, 'success');
+          } else {
+            alert("Automatic backup failed. Please go to Settings to export it manually.");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check backup status", err);
+      }
     }
 
     // ─── Navigation ─────────────────────────────────────────────────────────
@@ -1160,6 +1224,40 @@
       const opts = { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true };
       document.getElementById('header-time').textContent = now.toLocaleDateString('en-IN', opts);
     }
+
+    // ─── Global: Enter key to shift focus to next input ─────────────────────
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        if (e.defaultPrevented) return;
+
+        const active = document.activeElement;
+        if (!active) return;
+
+        if (active.tagName !== 'INPUT' && active.tagName !== 'SELECT') return;
+        if (active.type === 'button' || active.type === 'submit' || active.type === 'reset') return;
+
+        e.preventDefault();
+
+        const container = active.closest('form') || active.closest('.modal-box') || active.closest('.module-panel') || document.body;
+        const focusableSelector = 'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])';
+
+        const focusable = Array.from(container.querySelectorAll(focusableSelector)).filter(el => {
+          return el.offsetWidth > 0 || el.offsetHeight > 0;
+        });
+
+        const currentIndex = focusable.indexOf(active);
+        if (currentIndex > -1 && currentIndex < focusable.length - 1) {
+          const nextElement = focusable[currentIndex + 1];
+          nextElement.focus();
+
+          if (nextElement.tagName === 'INPUT' && ['text', 'number', 'tel', 'email', 'password'].includes(nextElement.type)) {
+            nextElement.select();
+          }
+        } else if (currentIndex === focusable.length - 1) {
+          active.blur();
+        }
+      }
+    });
   </script>
 
 </body>

@@ -125,29 +125,6 @@
   height: 56px;
 }
 
-/* ─── Dark Mode ─────────────────────────────────────────────────────── */
-body.dark {
-  --bg-body: #141414;
-  --bg-sidebar: #000000;
-  --bg-sidebar-hover: #1f1f1f;
-  --bg-card: #1f1f1f;
-  --bg-card-hover: #262626;
-  --bg-surface: #262626;
-  --bg-header: #141414;
-  --bg-input: #1f1f1f;
-  --bg-modal: rgba(0, 0, 0, 0.75);
-
-  --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --text-sidebar: #9ca3af;
-
-  --border: #333333;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.7);
-}
-
 /* ─── Reset ─────────────────────────────────────────────────────────── */
 *,
 *::before,
@@ -2333,14 +2310,6 @@ textarea {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
-}
-
-body.dark ::-webkit-scrollbar-thumb {
-  background: #4b5563;
-}
-
-body.dark ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
