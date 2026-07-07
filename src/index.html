@@ -444,13 +444,13 @@
           <div>
             <div style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Total GST
               Refund</div>
-            <input type="number" id="return-total-gst" value="0.00" step="0.01"
+            <input type="number" id="return-total-gst" value="0.00" step="0.01" onfocus="if(parseFloat(this.value) === 0) this.value = '';" onblur="if(this.value === '') this.value = '0.00';"
               style="width:100px; font-size:16px; font-weight:800; color:var(--text-primary); border:1px dashed var(--border); border-radius:4px; padding:4px 8px; text-align:right;">
           </div>
           <div>
             <div style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Grand Total
               Refund</div>
-            <input type="number" id="return-grand-total" value="0.00" step="0.01"
+            <input type="number" id="return-grand-total" value="0.00" step="0.01" onfocus="if(parseFloat(this.value) === 0) this.value = '';" onblur="if(this.value === '') this.value = '0.00';"
               style="width:120px; font-size:18px; font-weight:800; color:var(--accent-primary); border:1px solid var(--accent-primary); border-radius:4px; padding:4px 8px; text-align:right; background:rgba(99, 102, 241, 0.05);">
           </div>
         </div>
@@ -645,21 +645,21 @@
                 <div style="width:1px; height: 30px; background:var(--border);"></div>
                 <div style="text-align:center;">
                   <div style="font-size:20px; font-weight:800;">
-                    <input type="number" id="purchase-summary-gst" step="0.01" value="0.00" style="width:80px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--accent-violet); background:transparent;">
+                    <input type="number" id="purchase-summary-gst" step="0.01" value="0.00" onfocus="if(parseFloat(this.value) === 0) this.value = '';" onblur="if(this.value === '') this.value = '0.00';" style="width:80px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--accent-violet); background:transparent;">
                   </div>
                   <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">GST Paid</div>
                 </div>
                 <div style="width:1px; height: 30px; background:var(--border);"></div>
                 <div style="text-align:center;">
                   <div style="font-size:20px; font-weight:800;">
-                    <input type="number" id="purchase-round-off" step="0.01" value="0.00" style="width:70px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--text-main); background:transparent;">
+                    <input type="number" id="purchase-round-off" step="0.01" value="0.00" onfocus="if(parseFloat(this.value) === 0) this.value = '';" onblur="if(this.value === '') this.value = '0.00';" style="width:70px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--text-main); background:transparent;">
                   </div>
                   <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">Round Off</div>
                 </div>
                 <div style="width:1px; height: 30px; background:var(--border);"></div>
                 <div style="text-align:center;">
                   <div style="font-size:22px; font-weight:800;">
-                    ₹<input type="number" id="purchase-grand-total" step="0.01" value="0.00" style="width:100px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:20px; font-weight:800; text-align:center; padding:2px; color:var(--accent-green); background:transparent;">
+                    ₹<input type="number" id="purchase-grand-total" step="0.01" value="0.00" onfocus="if(parseFloat(this.value) === 0) this.value = '';" onblur="if(this.value === '') this.value = '0.00';" style="width:100px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:20px; font-weight:800; text-align:center; padding:2px; color:var(--accent-green); background:transparent;">
                   </div>
                   <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">Grand Total</div>
                 </div>
