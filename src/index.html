@@ -665,8 +665,8 @@
                 </div>
               </div>
               <div style="display:flex; gap:10px;">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-purchase')">Cancel</button>
                 <button type="button" class="btn btn-secondary" id="btn-draft-purchase" style="border-color:var(--accent-amber); color:var(--accent-amber);">📝 Draft</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-purchase')">Cancel</button>
                 <button type="submit" form="form-add-purchase" class="btn btn-primary" id="btn-save-purchase" style="padding: 10px 24px;">✓ Save Purchase</button>
               </div>
             </div>
@@ -1147,6 +1147,10 @@
 
     // ─── Logout ─────────────────────────────────────────────────────────────
     document.getElementById('btn-logout').addEventListener('click', () => {
+      // Bug fix #5: Stop background timers on logout to prevent phantom API calls
+      if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
+      if (typeof DashboardModule !== 'undefined' && DashboardModule.stop) DashboardModule.stop();
+
       currentUser = null;
       sessionStorage.removeItem('petstore_user');
       sessionStorage.removeItem('petstore_active_module');
@@ -1347,6 +1351,9 @@
     if (window.api && window.api.updater) {
       window.api.updater.onAvailable(() => {
         showToast('Update available! Downloading in background...', 'info');
+      });
+      window.api.updater.onError((event, errMsg) => {
+        showToast('Update error: ' + errMsg, 'error');
       });
 
       let lastProgress = 0;

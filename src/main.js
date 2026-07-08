@@ -6,17 +6,22 @@
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 
-// Instead of completely disabling hardware acceleration (which forces CPU rendering and can cause lag),
-// we apply specific command line switches to prevent throttling and freezing.
+// Fix for screen freezing/lagging after ~30 minutes of inactivity
+app.disableHardwareAcceleration();
+
 // --- LOW-END DEVICE OPTIMIZATIONS (No GPU, 4GB RAM, Low CPU) ---
-// Only keeping safe optimizations, removed flags that cause GC thrashing and CPU rendering lag over time.
 app.commandLine.appendSwitch('disable-smooth-scrolling'); // Saves CPU on scrolling
 app.commandLine.appendSwitch('wm-window-animations-disabled'); // Disables window animations
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache'); // Suppress Access is denied Gpu Cache Creation failed
-// app.commandLine.appendSwitch('disable-gpu-compositing'); // Uncomment if glitches still occur
+app.commandLine.appendSwitch('disable-gpu-compositing'); // Disable GPU compositing to prevent freeze
 
 const { autoUpdater } = require('electron-updater');
+
+autoUpdater.on('error', (err) => {
+  console.error('Updater Error:', err);
+  if (mainWindow) mainWindow.webContents.send('updater:error', err.message);
+});
 
 autoUpdater.on('update-available', () => {
   console.log('Update available.');
@@ -53,24 +58,40 @@ let db;
 
 // ─── Database Initialization ────────────────────────────────────────────────
 async function startDatabase() {
-  db = new Database(dbPath);
-  console.log('[DB] Connected to database at', dbPath);
+  try {
+    db = new Database(dbPath);
+    console.log('[DB] Connected to database at', dbPath);
 
-  // Run schema to ensure all tables exist (migrations)
-  initializeSchema(db);
-  console.log('[DB] Database schema verified.');
+    // Run WAL integrity check on startup — catches corruption from unclean shutdown
+    const walCheck = db.pragma('integrity_check');
+    if (walCheck[0]?.integrity_check !== 'ok') {
+      console.error('[DB] INTEGRITY CHECK FAILED:', walCheck);
+    }
+
+    // Run schema to ensure all tables exist (migrations)
+    initializeSchema(db);
+    console.log('[DB] Database schema verified.');
+  } catch (err) {
+    console.error('[DB] FATAL: Failed to initialize database:', err);
+    dialog.showErrorBox('Database Error',
+      `Failed to open the database file.\n\n${err.message}\n\nPath: ${dbPath}\n\nThe app will now close.`);
+    app.quit();
+  }
 }
 
 // ─── Helper: Run query and return array of objects ──────────────────────────
 function queryAll(sql, params = []) {
+  if (!db || !db.open) throw new Error('Database is not open');
   return db.prepare(sql).all(...params);
 }
 
 function queryOne(sql, params = []) {
+  if (!db || !db.open) throw new Error('Database is not open');
   return db.prepare(sql).get(...params);
 }
 
 function runSql(sql, params = []) {
+  if (!db || !db.open) throw new Error('Database is not open');
   return db.prepare(sql).run(...params);
 }
 
@@ -160,8 +181,26 @@ app.whenReady().then(async () => {
   autoUpdater.checkForUpdatesAndNotify();
 });
 
+// ─── Global Error Handlers — prevent silent crashes ──────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled Promise Rejection:', reason);
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// Bug fix #15: Properly close database on app quit to prevent WAL file corruption
+app.on('will-quit', () => {
+  try {
+    if (db && db.open) db.close();
+    console.log('[DB] Database connection closed cleanly.');
+  } catch (err) {
+    console.error('[DB] Error closing database:', err);
+  }
 });
 
 // ─── FILE PICKER / ATTACHMENT ────────────────────────────────────────────────
@@ -228,7 +267,7 @@ ipcMain.handle('auth:create-user', async (_e, { username, password, displayName,
     const hash = hashPassword(password);
     runSql(
       "INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
-      [username, hash, displayName, role]
+      [username || '', hash, displayName || '', role || 'cashier']
     );
     return { success: true };
   } catch (err) {
@@ -241,10 +280,10 @@ ipcMain.handle('auth:update-user', async (_e, { id, username, displayName, role,
     if (password) {
       const hash = hashPassword(password);
       runSql("UPDATE users SET username=?, display_name=?, role=?, password_hash=?, is_active=?, updated_at=datetime('now','localtime') WHERE id=?",
-        [username, displayName, role, hash, isActive ? 1 : 0, id]);
+        [username || '', displayName || '', role || 'cashier', hash, isActive ? 1 : 0, id]);
     } else {
       runSql("UPDATE users SET username=?, display_name=?, role=?, is_active=?, updated_at=datetime('now','localtime') WHERE id=?",
-        [username, displayName, role, isActive ? 1 : 0, id]);
+        [username || '', displayName || '', role || 'cashier', isActive ? 1 : 0, id]);
     }
     return { success: true };
   } catch (err) {
@@ -291,8 +330,12 @@ ipcMain.handle('categories:update', async (_e, { id, name, description }) => {
 
 ipcMain.handle('categories:delete', async (_e, id) => {
   try {
-    runSql("UPDATE products SET category_id = NULL WHERE category_id = ?", [id]);
-    runSql("DELETE FROM categories WHERE id = ?", [id]);
+    // Wrapped in transaction: if DELETE fails, the NULL update is rolled back
+    const deleteCat = db.transaction((catId) => {
+      runSql("UPDATE products SET category_id = NULL WHERE category_id = ?", [catId]);
+      runSql("DELETE FROM categories WHERE id = ?", [catId]);
+    });
+    deleteCat(id);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -360,15 +403,19 @@ ipcMain.handle('suppliers:delete', async (_e, id) => {
 
 ipcMain.handle('suppliers:hard-delete', async (_e, id) => {
   try {
-    runSql("UPDATE products SET supplier_id = NULL WHERE supplier_id = ?", [id]);
+    // Wrapped in transaction: if DELETE fails, the NULL update is rolled back
+    const deleteSupplier = db.transaction((suppId) => {
+      runSql("UPDATE products SET supplier_id = NULL WHERE supplier_id = ?", [suppId]);
 
-    const purCount = queryOne("SELECT COUNT(*) as cnt FROM purchases WHERE supplier_id = ?", [id]);
-    if (purCount && purCount.cnt > 0) {
-      runSql("UPDATE suppliers SET contact_person = '', mobile = '', email = '', gst_number = '', address = '', is_active = 0 WHERE id = ?", [id]);
-      return { success: true };
-    }
+      const purCount = queryOne("SELECT COUNT(*) as cnt FROM purchases WHERE supplier_id = ?", [suppId]);
+      if (purCount && purCount.cnt > 0) {
+        runSql("UPDATE suppliers SET contact_person = '', mobile = '', email = '', gst_number = '', address = '', is_active = 0 WHERE id = ?", [suppId]);
+        return;
+      }
 
-    runSql("DELETE FROM suppliers WHERE id = ?", [id]);
+      runSql("DELETE FROM suppliers WHERE id = ?", [suppId]);
+    });
+    deleteSupplier(id);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -516,37 +563,41 @@ ipcMain.handle('products:add', async (_e, data) => {
       return { success: false, error: 'Barcode already exists' };
     }
 
-    runSql(
-      `INSERT INTO products (barcode, product_name, category_id, brand, supplier_id,
-        base_price_paise, scheme_discount_paise, purchase_price_paise, selling_price_paise, gst_percent, hsn_code,
-        stock_quantity, minimum_stock_level, description)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        data.barcode, data.productName, data.categoryId || null, data.brand || '',
-        data.supplierId || null, data.basePricePaise ?? 0, data.schemeDiscountPaise ?? 0,
-        data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0,
-        data.gstPercent ?? 0, data.hsnCode || '', data.stockQuantity ?? 0,
-        data.minimumStockLevel ?? 5, data.description || ''
-      ]
-    );
+    // Wrapped in transaction: if batch/adjustment insert fails, the product insert is rolled back
+    const addProduct = db.transaction(() => {
+      runSql(
+        `INSERT INTO products (barcode, product_name, category_id, brand, supplier_id,
+          base_price_paise, scheme_discount_paise, purchase_price_paise, selling_price_paise, gst_percent, hsn_code,
+          stock_quantity, minimum_stock_level, description)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          data.barcode, data.productName, data.categoryId || null, data.brand || '',
+          data.supplierId || null, data.basePricePaise ?? 0, data.schemeDiscountPaise ?? 0,
+          data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0,
+          data.gstPercent ?? 0, data.hsnCode || '', data.stockQuantity ?? 0,
+          data.minimumStockLevel ?? 5, data.description || ''
+        ]
+      );
 
-    const newProduct = queryOne("SELECT id FROM products WHERE barcode = ?", [data.barcode]);
+      const newProduct = queryOne("SELECT id FROM products WHERE barcode = ?", [data.barcode]);
 
-    if (newProduct) {
-      if (data.stockQuantity > 0) {
-        runSql(
-          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'add', ?, 'Initial Stock')",
-          [newProduct.id, data.stockQuantity]
-        );
+      if (newProduct) {
+        if (data.stockQuantity > 0) {
+          runSql(
+            "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'add', ?, 'Initial Stock')",
+            [newProduct.id, data.stockQuantity]
+          );
+        }
+
+        if (data.batchNumber || data.expiryDate) {
+          runSql(
+            "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+            [newProduct.id, data.batchNumber || ('B-INIT-' + Date.now().toString().slice(-4)), data.expiryDate || '', data.stockQuantity || 0, data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0]
+          );
+        }
       }
-
-      if (data.batchNumber || data.expiryDate) {
-        runSql(
-          "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
-          [newProduct.id, data.batchNumber || ('B-INIT-' + Date.now().toString().slice(-4)), data.expiryDate || '', data.stockQuantity || 0, data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0]
-        );
-      }
-    }
+    });
+    addProduct();
 
     return { success: true };
   } catch (err) {
@@ -556,58 +607,61 @@ ipcMain.handle('products:add', async (_e, data) => {
 
 ipcMain.handle('products:update', async (_e, data) => {
   try {
-    const existingProduct = queryOne("SELECT stock_quantity FROM products WHERE id = ?", [data.id]);
-    
-    runSql(
-      `UPDATE products SET product_name=?, category_id=?, brand=?, supplier_id=?,
-        base_price_paise=?, scheme_discount_paise=?, purchase_price_paise=?, selling_price_paise=?, gst_percent=?, hsn_code=?,
-        minimum_stock_level=?, stock_quantity=?, description=?, updated_at=datetime('now','localtime')
-       WHERE id=?`,
-      [
-        data.productName, data.categoryId || null, data.brand || '',
-        data.supplierId || null, data.basePricePaise ?? 0, data.schemeDiscountPaise ?? 0,
-        data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0,
-        data.gstPercent ?? 0, data.hsnCode || '', data.minimumStockLevel ?? 5, data.stockQuantity ?? 0,
-        data.description || '', data.id
-      ]
-    );
-
-    if (existingProduct) {
-      const oldStock = existingProduct.stock_quantity || 0;
-      const newStock = data.stockQuantity || 0;
-      const diff = newStock - oldStock;
+    // Wrapped in transaction: if batch/adjustment write fails, product update is rolled back
+    const updateProduct = db.transaction(() => {
+      const existingProduct = queryOne("SELECT stock_quantity FROM products WHERE id = ?", [data.id]);
       
-      if (diff !== 0) {
-        const type = diff > 0 ? 'add' : 'reduce';
-        runSql(
-          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, ?, ?, 'Direct Edit')",
-          [data.id, type, Math.abs(diff)]
-        );
-      }
+      runSql(
+        `UPDATE products SET product_name=?, category_id=?, brand=?, supplier_id=?,
+          base_price_paise=?, scheme_discount_paise=?, purchase_price_paise=?, selling_price_paise=?, gst_percent=?, hsn_code=?,
+          minimum_stock_level=?, stock_quantity=?, description=?, updated_at=datetime('now','localtime')
+         WHERE id=?`,
+        [
+          data.productName, data.categoryId || null, data.brand || '',
+          data.supplierId || null, data.basePricePaise ?? 0, data.schemeDiscountPaise ?? 0,
+          data.purchasePricePaise ?? 0, data.sellingPricePaise ?? 0,
+          data.gstPercent ?? 0, data.hsnCode || '', data.minimumStockLevel ?? 5, data.stockQuantity ?? 0,
+          data.description || '', data.id
+        ]
+      );
 
-    }
-
-    if (data.batchNumber || data.expiryDate) {
-      if (data.batchNumber) {
-        const existingBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? AND batch_number = ?", [data.id, data.batchNumber]);
-        if (existingBatch) {
-          runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', existingBatch.id]);
-        } else {
-          const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [data.id]);
-          runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
-            [data.id, data.batchNumber, data.expiryDate || '', prod ? prod.stock_quantity : 0, prod ? prod.purchase_price_paise : 0, prod ? prod.selling_price_paise : 0]);
-        }
-      } else {
-        const latestBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? ORDER BY id DESC LIMIT 1", [data.id]);
-        if (latestBatch) {
-          runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', latestBatch.id]);
-        } else {
-          const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [data.id]);
-          runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
-            [data.id, 'B-' + Date.now().toString().slice(-4), data.expiryDate || '', prod ? prod.stock_quantity : 0, prod ? prod.purchase_price_paise : 0, prod ? prod.selling_price_paise : 0]);
+      if (existingProduct) {
+        const oldStock = existingProduct.stock_quantity || 0;
+        const newStock = data.stockQuantity || 0;
+        const diff = newStock - oldStock;
+        
+        if (diff !== 0) {
+          const type = diff > 0 ? 'add' : 'reduce';
+          runSql(
+            "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, ?, ?, 'Direct Edit')",
+            [data.id, type, Math.abs(diff)]
+          );
         }
       }
-    }
+
+      if (data.batchNumber || data.expiryDate) {
+        if (data.batchNumber) {
+          const existingBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? AND batch_number = ?", [data.id, data.batchNumber]);
+          if (existingBatch) {
+            runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', existingBatch.id]);
+          } else {
+            const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [data.id]);
+            runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+              [data.id, data.batchNumber, data.expiryDate || '', prod ? prod.stock_quantity : 0, prod ? prod.purchase_price_paise : 0, prod ? prod.selling_price_paise : 0]);
+          }
+        } else {
+          const latestBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? ORDER BY id DESC LIMIT 1", [data.id]);
+          if (latestBatch) {
+            runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', latestBatch.id]);
+          } else {
+            const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [data.id]);
+            runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+              [data.id, 'B-' + Date.now().toString().slice(-4), data.expiryDate || '', prod ? prod.stock_quantity : 0, prod ? prod.purchase_price_paise : 0, prod ? prod.selling_price_paise : 0]);
+          }
+        }
+      }
+    });
+    updateProduct();
 
     return { success: true };
   } catch (err) {
@@ -633,20 +687,24 @@ ipcMain.handle('inventory:stock-in', async (_e, { barcode, quantity, userId, bat
     const product = queryOne("SELECT * FROM products WHERE barcode = ? AND is_active = 1", [barcode]);
     if (!product) return { success: false, error: 'Product not found' };
 
-    runSql("UPDATE products SET stock_quantity = stock_quantity + ?, updated_at=datetime('now','localtime') WHERE id = ?",
-      [quantity, product.id]);
+    // Wrapped in transaction: stock, adjustment, and batch must all succeed or all roll back
+    const stockInTx = db.transaction(() => {
+      runSql("UPDATE products SET stock_quantity = stock_quantity + ?, updated_at=datetime('now','localtime') WHERE id = ?",
+        [quantity, product.id]);
 
-    runSql(
-      "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'stock_in', ?, 'Stock In via barcode scan', ?)",
-      [product.id, quantity, userId || null]
-    );
-
-    if (batchNumber || expiryDate) {
       runSql(
-        "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
-        [product.id, batchNumber || ('B-' + Date.now().toString().slice(-4)), expiryDate || '', quantity, purchasePricePaise ?? product.purchase_price_paise, sellingPricePaise ?? product.selling_price_paise]
+        "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'stock_in', ?, 'Stock In via barcode scan', ?)",
+        [product.id, quantity, userId || null]
       );
-    }
+
+      if (batchNumber || expiryDate) {
+        runSql(
+          "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+          [product.id, batchNumber || ('B-' + Date.now().toString().slice(-4)), expiryDate || '', quantity, purchasePricePaise ?? product.purchase_price_paise, sellingPricePaise ?? product.selling_price_paise]
+        );
+      }
+    });
+    stockInTx();
 
     const updated = queryOne("SELECT * FROM products WHERE id = ?", [product.id]);
     return { success: true, product: updated };
@@ -660,48 +718,55 @@ ipcMain.handle('inventory:adjust', async (_e, { productId, type, quantity, reaso
     const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [productId]);
     if (!prod) return { success: false, error: 'Product not found' };
 
-    if (type === 'add') {
-      runSql("UPDATE products SET stock_quantity = stock_quantity + ?, updated_at=datetime('now','localtime') WHERE id = ?",
-        [quantity, productId]);
-        
-      // Add a default batch for this manual addition
-      runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
-        [productId, 'ADJ-' + Date.now().toString().slice(-4), '', quantity, prod.purchase_price_paise, prod.selling_price_paise]);
-
-    } else {
-      // Check current stock
+    if (type !== 'add') {
+      // Check current stock before starting transaction
       if (prod.stock_quantity < quantity) {
         return { success: false, error: 'Insufficient stock for reduction' };
       }
-      runSql("UPDATE products SET stock_quantity = stock_quantity - ?, updated_at=datetime('now','localtime') WHERE id = ?",
-        [quantity, productId]);
-        
-      // Deduct from batches using FIFO logic
-      let remainingQtyToDeduct = quantity;
-      const batches = db.prepare(`
-        SELECT * FROM product_batches 
-        WHERE product_id = ? AND quantity > 0 
-        ORDER BY 
-          CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
-          created_at ASC
-      `).all(productId);
-
-      for (const batch of batches) {
-        if (remainingQtyToDeduct <= 0) break;
-        if (batch.quantity >= remainingQtyToDeduct) {
-          runSql("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?", [remainingQtyToDeduct, batch.id]);
-          remainingQtyToDeduct = 0;
-        } else {
-          remainingQtyToDeduct -= batch.quantity;
-          runSql("UPDATE product_batches SET quantity = 0 WHERE id = ?", [batch.id]);
-        }
-      }
     }
 
-    runSql(
-      "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, ?, ?, ?, ?)",
-      [productId, type, quantity, reason || '', userId || null]
-    );
+    // Wrapped in transaction: stock, batches, and adjustment must all succeed or all roll back
+    const adjustTx = db.transaction(() => {
+      if (type === 'add') {
+        runSql("UPDATE products SET stock_quantity = stock_quantity + ?, updated_at=datetime('now','localtime') WHERE id = ?",
+          [quantity, productId]);
+          
+        // Add a default batch for this manual addition
+        runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+          [productId, 'ADJ-' + Date.now().toString().slice(-4), '', quantity, prod.purchase_price_paise, prod.selling_price_paise]);
+
+      } else {
+        runSql("UPDATE products SET stock_quantity = stock_quantity - ?, updated_at=datetime('now','localtime') WHERE id = ?",
+          [quantity, productId]);
+          
+        // Deduct from batches using FIFO logic
+        let remainingQtyToDeduct = quantity;
+        const batches = db.prepare(`
+          SELECT * FROM product_batches 
+          WHERE product_id = ? AND quantity > 0 
+          ORDER BY 
+            CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
+            created_at ASC
+        `).all(productId);
+
+        for (const batch of batches) {
+          if (remainingQtyToDeduct <= 0) break;
+          if (batch.quantity >= remainingQtyToDeduct) {
+            runSql("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?", [remainingQtyToDeduct, batch.id]);
+            remainingQtyToDeduct = 0;
+          } else {
+            remainingQtyToDeduct -= batch.quantity;
+            runSql("UPDATE product_batches SET quantity = 0 WHERE id = ?", [batch.id]);
+          }
+        }
+      }
+
+      runSql(
+        "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, ?, ?, ?, ?)",
+        [productId, type, quantity, reason || '', userId || null]
+      );
+    });
+    adjustTx();
 
     return { success: true };
   } catch (err) {
@@ -918,8 +983,9 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
           rewardEarnedPaise = Math.floor(grandTotalPaise * 0.01);
         }
 
+        // Bug fix #6: Use MAX(0, ...) to prevent coupon balance from going negative
         db.prepare(
-          "UPDATE customers SET coupon_balance_paise = coupon_balance_paise - ? + ?, total_lifetime_spent_paise = total_lifetime_spent_paise + ?, updated_at = datetime('now','localtime') WHERE id = ?"
+          "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = total_lifetime_spent_paise + ?, updated_at = datetime('now','localtime') WHERE id = ?"
         ).run(actualAppliedCoupon, rewardEarnedPaise, grandTotalPaise, customerId);
 
         newCouponBalancePaise = cust.coupon_balance_paise - actualAppliedCoupon + rewardEarnedPaise;
@@ -1159,6 +1225,22 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, use
         }
       }
 
+      // Bug fix #10: Reverse loyalty rewards when a sale is returned
+      if (originalSale.customer_phone) {
+        const cust = db.prepare("SELECT * FROM customers WHERE phone_number = ?").get(originalSale.customer_phone);
+        if (cust) {
+          const rewardEarned = originalSale.reward_earned_paise || 0;
+          const appliedCoupon = originalSale.applied_coupon_paise || 0;
+          const grandTotal = originalSale.grand_total_paise || 0;
+
+          // Reverse: remove the reward that was earned, refund the coupon that was applied,
+          // and reduce lifetime spend
+          db.prepare(
+            "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = MAX(0, total_lifetime_spent_paise - ?), updated_at = datetime('now','localtime') WHERE id = ?"
+          ).run(rewardEarned, appliedCoupon, grandTotal, cust.id);
+        }
+      }
+
       return { success: true, creditNoteNumber, grandTotalPaise: originalSale.grand_total_paise };
     });
 
@@ -1306,10 +1388,16 @@ ipcMain.handle('purchases:delete', async (_e, purchaseId) => {
           const totalQty = item.quantity + (item.free_quantity || 0);
           
           if (totalQty > 0) {
-            // Decrease inventory
-            db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
-              totalQty, item.product_id
-            );
+            // Bug fix #8: Prevent stock from going negative — cap deduction at current stock
+            const currentProduct = db.prepare("SELECT stock_quantity FROM products WHERE id = ?").get(item.product_id);
+            const currentStock = currentProduct ? currentProduct.stock_quantity : 0;
+            const deductQty = Math.min(totalQty, Math.max(0, currentStock));
+
+            if (deductQty > 0) {
+              db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
+                deductQty, item.product_id
+              );
+            }
 
             // Log adjustment
             db.prepare(
@@ -1320,8 +1408,9 @@ ipcMain.handle('purchases:delete', async (_e, purchaseId) => {
           }
         }
 
-        // Remove batches associated with this purchase
-        db.prepare("DELETE FROM product_batches WHERE batch_number LIKE ?").run(`P-${invNum}-%`);
+        // Bug fix #7: Escape SQL LIKE wildcards in invoice number to prevent accidental batch deletion
+        const escapedInvNum = String(invNum).replace(/[%_]/g, '\\$&');
+        db.prepare("DELETE FROM product_batches WHERE batch_number LIKE ? ESCAPE '\\'").run(`P-${escapedInvNum}-%`);
       }
 
       // Delete items and purchase
@@ -1448,6 +1537,26 @@ ipcMain.handle('purchases:get-details', async (_e, purchaseId) => {
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
+// Bug fix #1: Add missing IPC handlers exposed in preload.js
+ipcMain.handle('app:get-db-path', async () => {
+  return dbPath;
+});
+
+ipcMain.handle('app:check-db-location', async () => {
+  try {
+    const exists = fs.existsSync(dbPath);
+    const stats = exists ? fs.statSync(dbPath) : null;
+    return {
+      path: dbPath,
+      exists,
+      sizeBytes: stats ? stats.size : 0,
+      isDev
+    };
+  } catch (err) {
+    return { path: dbPath, exists: false, sizeBytes: 0, isDev, error: err.message };
+  }
+});
+
 ipcMain.handle('app:open-external', async (_e, filePath) => {
   try {
     if (fs.existsSync(filePath)) {
@@ -1462,8 +1571,9 @@ ipcMain.handle('app:open-external', async (_e, filePath) => {
 
 ipcMain.handle('dashboard:get-stats', async () => {
   try {
+    // Bug fix #14: Use local date instead of UTC to match datetime('now','localtime') in DB
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
 
     const todaySales = queryOne(
@@ -1490,8 +1600,9 @@ ipcMain.handle('dashboard:get-stats', async () => {
       "SELECT COUNT(*) as cnt FROM products WHERE is_active = 1 AND stock_quantity > 0 AND stock_quantity <= minimum_stock_level"
     );
 
+    // Bug fix #11: Include negative stock products in out-of-stock count
     const outOfStock = queryOne(
-      "SELECT COUNT(*) as cnt FROM products WHERE is_active = 1 AND stock_quantity = 0"
+      "SELECT COUNT(*) as cnt FROM products WHERE is_active = 1 AND stock_quantity <= 0"
     );
 
     const recentSales = queryAll(
@@ -1605,7 +1716,8 @@ ipcMain.handle('reports:hsn-summary', async (_e, { startDate, endDate }) => {
         };
       }
 
-      const taxableValue = item.unit_price_paise * item.quantity;
+      // Bug fix #9: Use line_total_paise (which includes discounts) instead of raw unit_price * quantity
+      const taxableValue = item.line_total_paise;
       const gstAmount = Math.round(taxableValue * item.gst_percent / 100);
       let cgst = 0, sgst = 0, igst = 0;
       if (item.is_inter_state) {
@@ -1818,8 +1930,9 @@ ipcMain.handle('reports:gstr1', async (_e, { startDate, endDate }) => {
 
     return { b2b, b2cLarge, b2cSmall, creditNotes, docs, docsReturn };
   } catch (err) {
+    // Bug fix #4: Return error object instead of re-throwing (consistent with all other handlers)
     console.error('GSTR1 error:', err);
-    throw err;
+    return { error: err.message, b2b: [], b2cLarge: [], b2cSmall: [], creditNotes: [], docs: null, docsReturn: null };
   }
 });
 
@@ -1856,14 +1969,16 @@ ipcMain.handle('settings:set', async (_e, { key, value }) => {
 // ─── BACKUP ──────────────────────────────────────────────────────────────────
 
 ipcMain.handle('backup:export', async () => {
+  // Bug fix #2: Use absolute temp path instead of relative CWD
+  const backupTempPath = path.join(app.getPath('temp'), 'pos_backup_' + Date.now() + '.db');
   try {
-    const backupData = await db.backup('backup.db');
+    await db.backup(backupTempPath);
     // Read the backup file
-    const data = fs.readFileSync('backup.db');
+    const data = fs.readFileSync(backupTempPath);
     const base64 = data.toString('base64');
 
     // Clean up temporary backup file
-    fs.unlinkSync('backup.db');
+    try { fs.unlinkSync(backupTempPath); } catch(e) { /* best effort cleanup */ }
 
     // Update last backup time
     runSql("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_backup', ?)",
@@ -1871,6 +1986,8 @@ ipcMain.handle('backup:export', async () => {
 
     return { success: true, data: base64, size: data.length };
   } catch (err) {
+    // Clean up temp file on failure too
+    try { fs.unlinkSync(backupTempPath); } catch(e) { /* ignore */ }
     return { success: false, error: err.message };
   }
 });
@@ -1887,6 +2004,9 @@ ipcMain.handle('backup:import', async (_e, base64Data) => {
 
     // Reopen the database
     db = new Database(dbPath);
+
+    // Bug fix #3: Run schema migrations after import to handle older backups
+    initializeSchema(db);
 
     // Quick validity check
     db.prepare("SELECT COUNT(*) FROM products").get();
