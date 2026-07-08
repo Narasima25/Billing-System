@@ -236,7 +236,7 @@ const CustomersModule = (() => {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No purchase history found.</td></tr>';
       } else {
         tbody.innerHTML = history.map(sale => `
-          <tr>
+          <tr style="cursor:pointer;" onclick="CustomersModule.viewReceiptPreview(${sale.id})" title="Click to view receipt">
             <td style="font-family:monospace; font-weight:600;">${sale.receipt_number}</td>
             <td>${formatDate(sale.created_at)}</td>
             <td style="text-transform:capitalize;">
@@ -264,7 +264,75 @@ const CustomersModule = (() => {
     openModal('modal-whatsapp-update');
   }
 
-  return { init, viewHistory, openWhatsAppUpdate };
+  async function viewReceiptPreview(saleId) {
+    try {
+      const sale = await window.api.billing.getSale(saleId);
+      if (!sale) return;
+
+      const settingsArr = await window.api.settings.getAll();
+      const settings = {};
+      settingsArr.forEach(s => settings[s.key] = s.value);
+      const storeName = settings['store_name'] || 'My Store';
+      const storePhone = settings['store_phone'] || '';
+      const storeAddress = settings['store_address'] || '';
+
+      const itemsHtml = sale.items.map(item => {
+        const discountAmount = item.discount_paise || 0;
+        let html = `<div class="r-row"><span>${item.product_name}${item.hsn_code ? ` <span style="font-size:10px;">(HSN: ${item.hsn_code})</span>` : ''}</span></div>`;
+        html += `<div class="r-row"><span>&nbsp;&nbsp;${item.quantity} x ${formatRupees(item.unit_price_paise)}</span><span>${formatRupees(Math.max(0, item.line_total_paise))}</span></div>`;
+        if (item.free_quantity > 0) {
+          html += `<div class="r-row"><span>&nbsp;&nbsp;+ ${item.free_quantity} Free</span><span></span></div>`;
+        }
+        if (discountAmount > 0) {
+          html += `<div class="r-row"><span>&nbsp;&nbsp;Discount</span><span>-${formatRupees(discountAmount)}</span></div>`;
+        }
+        return html;
+      }).join('');
+
+      const previewContent = document.getElementById('receipt-preview-content');
+      
+      let dateStr = formatDate(sale.created_at);
+
+      previewContent.innerHTML = `
+        <div class="r-center r-bold" style="font-size:16px;">${storeName}</div>
+        ${storePhone ? `<div class="r-center" style="font-size:10px;">Ph: ${storePhone}</div>` : ''}
+        <div class="r-line"></div>
+        <div class="r-row"><span>Receipt:</span><span>${sale.receipt_number}</span></div>
+        <div class="r-row"><span>Date:</span><span>${dateStr}</span></div>
+        ${(sale.customer_name || sale.customer_phone) ? `<div class="r-row"><span>Customer:</span><span>${sale.customer_name || sale.customer_phone}</span></div>` : ''}
+        <div class="r-line"></div>
+        ${itemsHtml}
+        <div class="r-line"></div>
+        <div class="r-row"><span>Taxable Value</span><span>${formatRupees(sale.subtotal_paise)}</span></div>
+        ${sale.is_inter_state ?
+          `<div class="r-row"><span>IGST</span><span>${formatRupees(sale.igst_paise)}</span></div>` :
+          `<div class="r-row"><span>CGST</span><span>${formatRupees(sale.cgst_paise)}</span></div>
+           <div class="r-row"><span>SGST</span><span>${formatRupees(sale.sgst_paise)}</span></div>`
+        }
+        ${sale.discount_paise > 0 ? `<div class="r-row"><span>Discount</span><span>-${formatRupees(sale.discount_paise)}</span></div>` : ''}
+        ${sale.applied_coupon_paise > 0 ? `<div class="r-row"><span>Coupon Applied</span><span>-${formatRupees(sale.applied_coupon_paise)}</span></div>` : ''}
+        <div class="r-line"></div>
+        <div class="r-row r-total"><span>GRAND TOTAL</span><span>${formatRupees(sale.grand_total_paise)}</span></div>
+        <div class="r-line"></div>
+        <div class="r-row"><span>Payment:</span><span>${(sale.payment_mode || 'cash').toUpperCase()}</span></div>
+        ${sale.reward_earned_paise > 0 ? `
+        <div class="r-line"></div>
+        <div class="r-center" style="font-weight:bold; margin-top:4px;">🎉 Congratulations! 🎉</div>
+        <div class="r-center" style="font-size:11px;">You won a bonus coupon of: ${formatRupees(sale.reward_earned_paise)}</div>
+        ` : ''}
+        <div class="r-line"></div>
+        <div class="r-center" style="margin-top:8px;">Thank You! Visit Again 🐾</div>
+        <div class="r-center" style="font-size:10px; margin-top:4px;">${storeAddress}</div>
+      `;
+      previewContent.parentElement.style.width = '340px'; 
+      openModal('modal-receipt-preview');
+    } catch (err) {
+      console.error('Failed to load receipt:', err);
+      showToast('Error loading receipt details', 'error');
+    }
+  }
+
+  return { init, viewHistory, openWhatsAppUpdate, viewReceiptPreview };
 })();
 
 // For global access (e.g. from onclick attributes)

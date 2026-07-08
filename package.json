@@ -1,6 +1,6 @@
 {
   "name": "billing-pos",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -22,6 +22,7 @@
   "build": {
     "appId": "com.petstore.pos",
     "productName": "PetStore POS",
+    "artifactName": "PetStore.POS.Setup.${version}.${ext}",
     "files": [
       "**/*",
       "!out${/*}",
