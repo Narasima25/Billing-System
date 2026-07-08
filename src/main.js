@@ -304,9 +304,22 @@ ipcMain.handle('categories:delete', async (_e, id) => {
 ipcMain.handle('suppliers:get-all', async (_e, options = {}) => {
   try {
     if (options && options.includeInactive) {
-      return queryAll("SELECT * FROM suppliers ORDER BY is_active DESC, name ASC");
+      return queryAll(`
+        SELECT s.*, GROUP_CONCAT(p.invoice_number) as invoice_numbers 
+        FROM suppliers s 
+        LEFT JOIN purchases p ON s.id = p.supplier_id 
+        GROUP BY s.id 
+        ORDER BY s.is_active DESC, s.name ASC
+      `);
     }
-    return queryAll("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY name ASC");
+    return queryAll(`
+      SELECT s.*, GROUP_CONCAT(p.invoice_number) as invoice_numbers 
+      FROM suppliers s 
+      LEFT JOIN purchases p ON s.id = p.supplier_id 
+      WHERE s.is_active = 1 
+      GROUP BY s.id 
+      ORDER BY s.name ASC
+    `);
   } catch (err) {
     return [];
   }

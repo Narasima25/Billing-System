@@ -111,7 +111,7 @@ const SuppliersModule = (() => {
       const rows = document.getElementById('suppliers-tbody').querySelectorAll('tr');
       rows.forEach(row => {
         if(row.children.length === 1) return; // Empty state row
-        const text = row.innerText.toLowerCase();
+        const text = row.textContent.toLowerCase();
         row.style.display = text.includes(term) ? '' : 'none';
       });
     });
@@ -172,6 +172,7 @@ const SuppliersModule = (() => {
       tbody.innerHTML = suppliers.map(s => `<tr>
         <td class="fw-700">
           ${s.name} ${s.is_active === 0 ? '<span class="badge badge-rose" style="font-size:10px;margin-left:4px;">Deactivated</span>' : ''}
+          <span style="display:none;">${s.invoice_numbers || ''}</span>
         </td>
         <td>${s.contact_person || '—'}</td>
         <td class="font-mono text-sm">${s.mobile || '—'}</td>

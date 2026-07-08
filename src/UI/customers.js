@@ -269,9 +269,7 @@ const CustomersModule = (() => {
       const sale = await window.api.billing.getSale(saleId);
       if (!sale) return;
 
-      const settingsArr = await window.api.settings.getAll();
-      const settings = {};
-      settingsArr.forEach(s => settings[s.key] = s.value);
+      const settings = await window.api.settings.getAll();
       const storeName = settings['store_name'] || 'My Store';
       const storePhone = settings['store_phone'] || '';
       const storeAddress = settings['store_address'] || '';
@@ -328,7 +326,7 @@ const CustomersModule = (() => {
       openModal('modal-receipt-preview');
     } catch (err) {
       console.error('Failed to load receipt:', err);
-      showToast('Error loading receipt details', 'error');
+      showToast('Error: ' + err.message, 'error');
     }
   }
 
