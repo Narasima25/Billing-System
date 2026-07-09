@@ -498,6 +498,7 @@ const SuppliersModule = (() => {
         schemeDiscountPaise: item.scheme_discount_paise || 0,
         purchasePricePaise: item.unit_cost_paise,
         sellingPricePaise: item.selling_price_paise,
+        explicitLineTotalPaise: item.line_total_paise,
         cgstPercent: item.cgst_percent,
         sgstPercent: item.sgst_percent,
         hsnCode: item.hsn_code || ''

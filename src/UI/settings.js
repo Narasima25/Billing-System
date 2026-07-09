@@ -140,6 +140,13 @@ const SettingsModule = (() => {
             </div>
           </div>
 
+          <!-- Software Update -->
+          <div class="settings-section">
+            <h3>🔄 Software Update</h3>
+            <p class="text-sm text-muted mb-16">Check for the latest features, bug fixes, and security updates.</p>
+            <button class="btn btn-primary btn-sm" id="btn-check-updates">Check for Updates</button>
+          </div>
+
         </div>
       </div>
     `;
@@ -153,6 +160,12 @@ const SettingsModule = (() => {
       if (e.target.id === 'btn-backup-import') importBackup();
       if (e.target.id === 'btn-add-user-settings') openUserModal();
       if (e.target.id === 'btn-save-store-config') saveStoreConfig();
+      if (e.target.id === 'btn-check-updates') {
+        showToast('Checking for updates...', 'info');
+        if (window.api && window.api.updater) {
+          window.api.updater.check();
+        }
+      }
     });
 
     // Printer width change

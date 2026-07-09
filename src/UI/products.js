@@ -142,7 +142,7 @@ const ProductsModule = (() => {
       const id = parseInt(btn.dataset.id);
       if (btn.dataset.action === 'edit') editProduct(id);
       if (btn.dataset.action === 'delete') deleteProduct(id);
-      if (btn.dataset.action === 'adjust') openStockAdjustModal(id, btn.dataset.name);
+      if (btn.dataset.action === 'adjust') openStockAdjustModal(id, btn.dataset.name, btn.dataset.barcode);
     });
 
     // Pagination
@@ -280,7 +280,7 @@ const ProductsModule = (() => {
           <td>
             <div class="btn-group" style="gap:4px;">
               <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${p.id}" title="Edit">✏️</button>
-              ${isService ? '' : `<button class="btn btn-ghost btn-sm" data-action="adjust" data-id="${p.id}" data-name="${p.product_name}" title="Adjust Stock">📦</button>`}
+              ${isService ? '' : `<button class="btn btn-ghost btn-sm" data-action="adjust" data-id="${p.id}" data-name="${p.product_name}" data-barcode="${p.barcode}" title="Adjust Stock">📦</button>`}
               <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${p.id}" title="Delete">🗑️</button>
             </div>
           </td>
@@ -333,8 +333,8 @@ const ProductsModule = (() => {
     document.getElementById('prod-stock').disabled = false;
     document.getElementById('prod-min-stock').value = product ? product.minimum_stock_level : '5';
     document.getElementById('prod-desc').value = product ? (product.description || '') : '';
-    document.getElementById('prod-batch').value = '';
-    document.getElementById('prod-expiry').value = '';
+    document.getElementById('prod-batch').value = product ? (product.batchNumber || '') : '';
+    document.getElementById('prod-expiry').value = product ? (product.expiryDate || '') : '';
 
     openModal('modal-product');
     setTimeout(() => {
@@ -397,7 +397,18 @@ const ProductsModule = (() => {
   async function editProduct(id) {
     const product = loadedProducts.find(p => p.id === id);
     if (product) {
+      try {
+        const batches = await window.api.batches.getByProduct(id);
+        if (batches && batches.length > 0) {
+          const latestBatch = batches[batches.length - 1];
+          product.batchNumber = latestBatch.batch_number;
+          product.expiryDate = latestBatch.expiry_date;
+        }
+      } catch (err) {
+        console.error('Error fetching batches:', err);
+      }
       openProductModal(product);
+      document.getElementById('product-edit-id').value = product.id;
     }
   }
 
@@ -408,9 +419,14 @@ const ProductsModule = (() => {
     else showToast(result.error || 'Delete failed', 'error');
   }
 
-  function openStockAdjustModal(id, name) {
+  function openStockAdjustModal(id, name, barcode) {
     document.getElementById('adjust-product-id').value = id;
     document.getElementById('adjust-product-name').value = name;
+    if (barcode) {
+      document.getElementById('adjust-product-search').value = barcode;
+    } else {
+      document.getElementById('adjust-product-search').value = '';
+    }
     document.getElementById('adjust-type').value = 'add';
     document.getElementById('adjust-qty').value = '';
     document.getElementById('adjust-reason').value = '';

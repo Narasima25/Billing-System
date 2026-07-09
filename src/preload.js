@@ -135,7 +135,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // ─── Updater ───────────────────────────────────────────────────────────
   updater: {
+    check: () => ipcRenderer.invoke('updater:check'),
     onAvailable: (callback) => ipcRenderer.on('updater:available', callback),
+    onNotAvailable: (callback) => ipcRenderer.on('updater:not-available', callback),
     onProgress: (callback) => ipcRenderer.on('updater:progress', callback),
     onError: (callback) => ipcRenderer.on('updater:error', callback),
   }

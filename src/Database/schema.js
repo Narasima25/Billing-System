@@ -515,10 +515,21 @@ function generateReceiptNumber(db) {
   }
   counter++;
 
+  // Safety: If a receipt with this number already exists (e.g., after a corrupted restore),
+  // keep incrementing until we find a free number.
+  let receiptNumber;
+  let maxRetries = 100;
+  while (maxRetries-- > 0) {
+    const padded = counter.toString().padStart(6, '0');
+    receiptNumber = `PET-${year}-${padded}`;
+    const exists = db.prepare("SELECT 1 FROM sales WHERE receipt_number = ?").get(receiptNumber);
+    if (!exists) break;
+    counter++;
+  }
+
   db.prepare("UPDATE settings SET value = ? WHERE key = 'receipt_counter'").run(counter.toString());
 
-  const padded = counter.toString().padStart(6, '0');
-  return `PET-${year}-${padded}`;
+  return receiptNumber;
 }
 
 module.exports = { initializeSchema, hashPassword, generateReceiptNumber };

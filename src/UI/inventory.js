@@ -147,6 +147,21 @@ const InventoryModule = (() => {
       }
     });
 
+    // Auto-fetch product when typing/scanning barcode
+    document.getElementById('adjust-product-search').addEventListener('input', async (e) => {
+      const searchStr = e.target.value.trim();
+      if (!searchStr) return;
+      try {
+        const p = await window.api.products.lookupBarcode(searchStr);
+        if (p) {
+          document.getElementById('adjust-product-id').value = p.id;
+          document.getElementById('adjust-product-name').value = p.product_name;
+        }
+      } catch (err) {
+        // fail silently for input event
+      }
+    });
+
     // Audit export
     document.getElementById('btn-export-audit').addEventListener('click', exportAuditCSV);
 

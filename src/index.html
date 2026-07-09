@@ -1352,6 +1352,11 @@
       window.api.updater.onAvailable(() => {
         showToast('Update available! Downloading in background...', 'info');
       });
+      if (window.api.updater.onNotAvailable) {
+        window.api.updater.onNotAvailable(() => {
+          showToast('No updates available. You are on the latest version.', 'success');
+        });
+      }
       window.api.updater.onError((event, errMsg) => {
         showToast('Update error: ' + errMsg, 'error');
       });
