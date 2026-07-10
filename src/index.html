@@ -623,6 +623,7 @@
                   <th style="width: 60px; font-size:11px;">Qty</th>
                   <th style="width: 60px; font-size:11px;">Free</th>
                   <th style="width: 90px; font-size:11px;">Base Price</th>
+                  <th style="width: 80px; font-size:11px;">Special Disc</th>
                   <th style="width: 100px; font-size:11px;">CGST / SGST</th>
                   <th style="width: 90px; font-size:11px;">Total</th>
                   <th style="width: 36px;"></th>
@@ -648,6 +649,13 @@
                     <input type="number" id="purchase-summary-gst" step="0.01" value="0.00" onfocus="if(parseFloat(this.value) === 0) this.value = '';" onblur="if(this.value === '') this.value = '0.00';" style="width:80px; border:1px dashed var(--border); border-radius:var(--radius-sm); font-size:16px; font-weight:700; text-align:center; padding:2px; color:var(--accent-violet); background:transparent;">
                   </div>
                   <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">GST Paid</div>
+                </div>
+                <div style="width:1px; height: 30px; background:var(--border);"></div>
+                <div style="text-align:center;">
+                  <div style="font-size:20px; font-weight:800; color:var(--accent-amber);">
+                    ₹<span id="purchase-summary-special-disc">0.00</span>
+                  </div>
+                  <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">Special Disc</div>
                 </div>
                 <div style="width:1px; height: 30px; background:var(--border);"></div>
                 <div style="text-align:center;">
@@ -850,23 +858,41 @@
         <div class="modal-title"><i data-lucide="rotate-ccw"></i> Process Return</div>
         <button class="modal-close" onclick="closeModal('modal-process-return')">✕</button>
       </div>
-      <form id="form-process-return"
-        onsubmit="if(typeof BillingModule !== 'undefined') BillingModule.processReturnSubmit(); return false;">
-        <div class="form-group">
-          <label class="form-label">Original Receipt Number *</label>
-          <input type="text" class="form-input" id="return-receipt-number" placeholder="PET-YYYY-NNNNNN" required
-            autofocus>
+      <div style="padding: 16px;">
+        <div class="form-group" style="display: flex; gap: 8px;">
+          <input type="text" class="form-input" id="return-receipt-number" placeholder="PET-YYYY-NNNNNN" required autofocus style="flex: 1;">
+          <button type="button" class="btn btn-secondary" id="btn-fetch-return" onclick="if(typeof BillingModule !== 'undefined') BillingModule.fetchSaleForReturn()">Fetch</button>
         </div>
-        <div class="alert-card info mt-12 mb-12">
-          <span class="alert-text">This will fully refund the original receipt, generate a Credit Note, and restore the
-            stock quantities.</span>
+        
+        <div id="return-items-section" style="display: none; margin-top: 16px;">
+          <h3 class="text-sm font-medium mb-8">Select Items to Return</h3>
+          <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+            <table class="data-table" id="table-return-items">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Sold</th>
+                  <th>Returned</th>
+                  <th>Ret. Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Items populated via JS -->
+              </tbody>
+            </table>
+          </div>
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding: 12px; background: var(--bg-alt); border-radius: var(--radius-md);">
+            <span class="text-sm font-medium">Estimated Refund:</span>
+            <span id="return-estimated-refund" class="text-lg font-bold">₹0.00</span>
+          </div>
+
+          <div class="modal-footer" style="margin-top: 16px;">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('modal-process-return')">Cancel</button>
+            <button type="button" class="btn btn-primary bg-rose text-white border-rose" id="btn-submit-return" onclick="if(typeof BillingModule !== 'undefined') BillingModule.processReturnSubmit()">Process Return</button>
+          </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-process-return')">Cancel</button>
-          <button type="submit" class="btn btn-primary bg-rose text-white border-rose" id="btn-submit-return">Process
-            Return</button>
-        </div>
-      </form>
+      </div>
     </div>
   </div>
 
@@ -933,6 +959,7 @@
                 <th>Payment</th>
                 <th>Type</th>
                 <th style="text-align:right;">Total (₹)</th>
+                <th style="width: 40px; text-align:right;"></th>
               </tr>
             </thead>
             <tbody id="ch-items-tbody"></tbody>

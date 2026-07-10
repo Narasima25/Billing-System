@@ -998,7 +998,59 @@ ipcMain.handle('customers:send-bulk-update', async (_e, { recipients, messageTex
   }
 });
 
-ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discountPaise, userId, customerName, customerGstin, isB2B, isInterState, customerStateCode, customerPhone, customerAddress, appliedCouponPaise, sendWhatsappReceipt: shouldSendWhatsappReceipt }) => {
+ipcMain.handle('customers:update-joined-date', async (_e, { phone, dateStr }) => {
+  try {
+    if (!phone || !dateStr) return { success: false, error: 'Phone and date are required' };
+    const cust = queryOne("SELECT id, created_at FROM customers WHERE phone_number = ?", [phone]);
+    if (!cust) return { success: false, error: 'Customer not found' };
+    // Preserve the time portion, only update the date
+    const oldTime = cust.created_at ? cust.created_at.split(' ')[1] || '00:00:00' : '00:00:00';
+    const newCreatedAt = `${dateStr} ${oldTime}`;
+    runSql("UPDATE customers SET created_at = ?, updated_at = datetime('now','localtime') WHERE id = ?", [newCreatedAt, cust.id]);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('billing:get-next-receipt-number', async (_e, dateStr) => {
+  try {
+    const dateObj = dateStr ? new Date(dateStr) : new Date();
+    const year = dateObj.getFullYear();
+    const result = db.prepare("SELECT value FROM settings WHERE key = 'receipt_counter'").get();
+    let counter = (result && result.value) ? parseInt(result.value) || 0 : 0;
+
+    // Self-heal: ensure counter is at least as high as the max existing receipt number
+    const prefix = `PET-${year}-`;
+    const maxExisting = db.prepare(
+      "SELECT receipt_number FROM sales WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1"
+    ).get(prefix + '%');
+    if (maxExisting) {
+      const existingNum = parseInt(maxExisting.receipt_number.replace(prefix, '')) || 0;
+      if (existingNum > counter) {
+        counter = existingNum;
+      }
+    }
+
+    counter++;
+    
+    let receiptNumber;
+    let maxRetries = 100;
+    while (maxRetries-- > 0) {
+      const padded = counter.toString().padStart(6, '0');
+      receiptNumber = `PET-${year}-${padded}`;
+      const exists = db.prepare("SELECT 1 FROM sales WHERE receipt_number = ?").get(receiptNumber);
+      if (!exists) break;
+      counter++;
+    }
+    
+    return receiptNumber;
+  } catch (err) {
+    return 'Auto Generated';
+  }
+});
+
+ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discountPaise, userId, customerName, customerGstin, isB2B, isInterState, customerStateCode, customerPhone, customerAddress, appliedCouponPaise, invoiceDate, sendWhatsappReceipt: shouldSendWhatsappReceipt, customReceiptNumber }) => {
   try {
     const checkoutTransaction = db.transaction((items) => {
       let subtotalPaise = 0;
@@ -1086,17 +1138,35 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
       // -------------------------
 
       // Generate receipt number
-      const receiptNumber = generateReceiptNumber(db);
+      const receiptNumber = customReceiptNumber || generateReceiptNumber(db, invoiceDate);
+
+      let createdAtStr = null;
+      if (invoiceDate) {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const sec = String(now.getSeconds()).padStart(2, '0');
+        createdAtStr = `${invoiceDate} ${hh}:${min}:${sec}`;
+      } else {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const sec = String(now.getSeconds()).padStart(2, '0');
+        createdAtStr = `${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}`;
+      }
 
       // Insert sale
       const { lastInsertRowid: saleId } = db.prepare(
         `INSERT INTO sales (receipt_number, user_id, customer_name, customer_gstin, is_b2b, subtotal_paise, discount_paise,
-          cgst_paise, sgst_paise, igst_paise, is_inter_state, customer_state_code, grand_total_paise, payment_mode, customer_phone, customer_address, applied_coupon_paise, reward_earned_paise)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          cgst_paise, sgst_paise, igst_paise, is_inter_state, customer_state_code, grand_total_paise, payment_mode, customer_phone, customer_address, applied_coupon_paise, reward_earned_paise, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         receiptNumber, userId || null, customerName || '', customerGstin || '', isB2B ? 1 : 0, subtotalPaise, discount,
         totalCgstPaise, totalSgstPaise, totalIgstPaise, isInterState ? 1 : 0, customerStateCode || '', grandTotalPaise, paymentMode || 'cash',
-        customerPhone || '', customerAddress || '', actualAppliedCoupon, rewardEarnedPaise
+        customerPhone || '', customerAddress || '', actualAppliedCoupon, rewardEarnedPaise, createdAtStr
       );
 
       // Insert sale items and deduct stock
@@ -1213,7 +1283,8 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
         customerGstin,
         customerPhone: customerPhone || '',
         isB2B,
-        isInterState
+        isInterState,
+        createdAt: createdAtStr
       };
     });
 
@@ -1263,81 +1334,249 @@ ipcMain.handle('billing:get-last-sale', async () => {
   }
 });
 
-ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, userId }) => {
+ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
   try {
-    const returnTransaction = db.transaction((receiptNum) => {
-      // Find the original sale
-      const originalSale = db.prepare("SELECT * FROM sales WHERE receipt_number = ?").get(receiptNum);
-      if (!originalSale) throw new Error("Receipt not found");
+    const deleteSaleTransaction = db.transaction((id) => {
+      const sale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);
+      if (!sale) throw new Error('Sale not found');
 
-      // Check if already returned
-      const existingReturn = db.prepare("SELECT * FROM sales WHERE is_return = 1 AND original_receipt_number = ?").get(receiptNum);
-      if (existingReturn) throw new Error("This receipt has already been returned");
-
-      // Generate a credit note number
-      const creditNoteNumber = generateReceiptNumber(db);
-
-      // Create negative sale record
-      const { lastInsertRowid: returnSaleId } = db.prepare(
-        `INSERT INTO sales (receipt_number, user_id, customer_name, customer_gstin, is_b2b, subtotal_paise, discount_paise,
-          cgst_paise, sgst_paise, igst_paise, is_inter_state, grand_total_paise, payment_mode, is_return, original_receipt_number, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        creditNoteNumber, userId || null, originalSale.customer_name, originalSale.customer_gstin, originalSale.is_b2b,
-        -originalSale.subtotal_paise, -originalSale.discount_paise, -originalSale.cgst_paise, -originalSale.sgst_paise, -originalSale.igst_paise,
-        originalSale.is_inter_state, -originalSale.grand_total_paise, originalSale.payment_mode, 1, receiptNum, 'Sales Return'
-      );
-
-      // Restore inventory and sale items
-      const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(originalSale.id);
+      // 1. Restore inventory from sale items
+      const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(id);
       for (const item of saleItems) {
         const freeQty = item.free_quantity || 0;
-        const discountPaise = item.discount_paise || 0;
         const totalQuantityToRestore = item.quantity + freeQty;
 
-        // Insert negative sale item
-        db.prepare(
-          `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, free_quantity, unit_price_paise, purchase_price_paise, discount_paise, gst_percent, hsn_code, line_total_paise, batch_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
-          returnSaleId, item.product_id, item.product_name, item.barcode, -item.quantity, -freeQty,
-          item.unit_price_paise, item.purchase_price_paise, -discountPaise, item.gst_percent, item.hsn_code, -item.line_total_paise, item.batch_id
-        );
+        if (totalQuantityToRestore > 0) {
+          // Restore product stock
+          db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.product_id);
 
-        // Re-add to inventory
-        db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.product_id);
+          // Restore batch quantity if applicable
+          if (item.batch_id) {
+            db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.batch_id);
+          }
 
-        // Log inventory adjustment
-        db.prepare(
-          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'add', ?, ?, ?)"
-        ).run(item.product_id, totalQuantityToRestore, `Return against ${receiptNum}`, userId || null);
-
-        // Put quantity back in batch if applicable
-        if (item.batch_id) {
-          db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.batch_id);
+          // Log inventory adjustment
+          db.prepare(
+            "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'add', ?, ?)"
+          ).run(item.product_id, totalQuantityToRestore, `Sale Deleted: ${sale.receipt_number}`);
         }
       }
 
-      // Bug fix #10: Reverse loyalty rewards when a sale is returned
-      if (originalSale.customer_phone) {
-        const cust = db.prepare("SELECT * FROM customers WHERE phone_number = ?").get(originalSale.customer_phone);
+      // 2. Reverse loyalty rewards if customer had phone
+      if (sale.customer_phone) {
+        const cust = db.prepare("SELECT * FROM customers WHERE phone_number = ?").get(sale.customer_phone);
         if (cust) {
-          const rewardEarned = originalSale.reward_earned_paise || 0;
-          const appliedCoupon = originalSale.applied_coupon_paise || 0;
-          const grandTotal = originalSale.grand_total_paise || 0;
+          const rewardEarned = sale.reward_earned_paise || 0;
+          const appliedCoupon = sale.applied_coupon_paise || 0;
+          const grandTotal = sale.grand_total_paise || 0;
 
-          // Reverse: remove the reward that was earned, refund the coupon that was applied,
-          // and reduce lifetime spend
+          // Reverse: remove earned reward, refund applied coupon, reduce lifetime spend
           db.prepare(
             "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = MAX(0, total_lifetime_spent_paise - ?), updated_at = datetime('now','localtime') WHERE id = ?"
           ).run(rewardEarned, appliedCoupon, grandTotal, cust.id);
         }
       }
 
-      return { success: true, creditNoteNumber, grandTotalPaise: originalSale.grand_total_paise };
+      // 3. Delete sale items and the sale record
+      db.prepare("DELETE FROM sale_items WHERE sale_id = ?").run(id);
+      db.prepare("DELETE FROM sales WHERE id = ?").run(id);
+
+      // 4. Clean up related inventory adjustments
+      db.prepare("DELETE FROM inventory_adjustments WHERE reason = ?").run(`Sale ${sale.receipt_number}`);
+
+      return { success: true, receiptNumber: sale.receipt_number };
     });
 
-    const result = returnTransaction(originalReceiptNumber);
+    const result = deleteSaleTransaction(saleId);
+    return result;
+  } catch (err) {
+    console.error('[IPC] billing:delete-sale error:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('billing:get-sale-for-return', async (_e, receiptNum) => {
+  try {
+    const sale = queryOne("SELECT * FROM sales WHERE receipt_number = ?", [receiptNum]);
+    if (!sale) return { success: false, error: 'Receipt not found' };
+    
+    // Do not allow returning a return receipt
+    if (sale.is_return) return { success: false, error: 'Cannot process a return on a Credit Note' };
+
+    const items = queryAll("SELECT * FROM sale_items WHERE sale_id = ?", [sale.id]);
+    sale.items = items;
+    return { success: true, sale };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, returnItems, userId }) => {
+  try {
+    const returnTransaction = db.transaction((receiptNum, itemsToReturn) => {
+      const originalSale = db.prepare("SELECT * FROM sales WHERE receipt_number = ?").get(receiptNum);
+      if (!originalSale) throw new Error("Receipt not found");
+      if (originalSale.is_return) throw new Error("Cannot process a return on a Credit Note");
+
+      if (!itemsToReturn || itemsToReturn.length === 0) {
+        throw new Error("No items selected for return");
+      }
+
+      const creditNoteNumber = generateReceiptNumber(db);
+
+      let refundSubtotalPaise = 0;
+      let refundCgstPaise = 0;
+      let refundSgstPaise = 0;
+      let refundIgstPaise = 0;
+      let refundDiscountPaise = 0;
+
+      const itemsDataToInsert = [];
+
+      // 1. Process each item to return
+      for (const reqItem of itemsToReturn) {
+        const { saleItemId, qty } = reqItem;
+        if (qty <= 0) continue;
+
+        const originalItem = db.prepare("SELECT * FROM sale_items WHERE id = ? AND sale_id = ?").get(saleItemId, originalSale.id);
+        if (!originalItem) throw new Error(`Item ID ${saleItemId} not found in this sale`);
+
+        const returnedSoFar = originalItem.returned_quantity || 0;
+        const availableToReturn = originalItem.quantity - returnedSoFar;
+
+        if (qty > availableToReturn) {
+          throw new Error(`Cannot return ${qty} of ${originalItem.product_name}. Only ${availableToReturn} available to return.`);
+        }
+
+        // Calculate proportional values for this item
+        // Original unit price, GST percent
+        const unitPrice = originalItem.unit_price_paise;
+        const itemDiscount = Math.round((originalItem.discount_paise / originalItem.quantity) * qty);
+        
+        const lineTotal = Math.max(0, (unitPrice * qty) - itemDiscount);
+
+        let taxableValue = lineTotal;
+        let itemGst = 0;
+        let cgst = 0, sgst = 0, igst = 0;
+
+        if (originalItem.gst_percent > 0) {
+          taxableValue = Math.round((lineTotal * 100) / (100 + originalItem.gst_percent));
+          itemGst = lineTotal - taxableValue;
+
+          if (originalSale.is_inter_state) {
+            igst = itemGst;
+          } else {
+            cgst = Math.round(itemGst / 2);
+            sgst = itemGst - cgst;
+          }
+        }
+
+        refundSubtotalPaise += taxableValue;
+        refundDiscountPaise += itemDiscount;
+        refundCgstPaise += cgst;
+        refundSgstPaise += sgst;
+        refundIgstPaise += igst;
+
+        // Calculate proportional free quantity to return
+        let freeQtyToReturn = 0;
+        if (originalItem.free_quantity > 0) {
+          freeQtyToReturn = Math.floor((originalItem.free_quantity / originalItem.quantity) * qty);
+        }
+
+        itemsDataToInsert.push({
+          originalItem,
+          qtyToReturn: qty,
+          freeQtyToReturn,
+          itemDiscount,
+          lineTotal
+        });
+
+        // Update returned_quantity on the original item
+        db.prepare("UPDATE sale_items SET returned_quantity = returned_quantity + ? WHERE id = ?").run(qty, saleItemId);
+      }
+
+      if (itemsDataToInsert.length === 0) {
+        throw new Error("No valid items to return");
+      }
+
+      const rawRefundGrandTotal = refundSubtotalPaise + refundCgstPaise + refundSgstPaise + refundIgstPaise;
+      
+      // Calculate loyalty point adjustments
+      let rewardToReverse = 0;
+      let couponToRefund = 0;
+      let finalRefundGrandTotal = rawRefundGrandTotal;
+
+      if (originalSale.customer_phone) {
+        // Calculate the NEW total sale value after this return
+        const remainingGrandTotal = originalSale.grand_total_paise - rawRefundGrandTotal;
+
+        // User Logic: "if after their purchase value come under 1000 no loyalty but still they are above 1000 provide the loyalty according to that"
+        const originalReward = originalSale.reward_earned_paise || 0;
+        let newRewardShouldBe = 0;
+        
+        if (remainingGrandTotal >= 100000) { // 1000 rupees
+          newRewardShouldBe = Math.floor(remainingGrandTotal * 0.01);
+        }
+
+        // We reverse the difference between what they got and what they should have
+        rewardToReverse = Math.max(0, originalReward - newRewardShouldBe);
+
+        // For coupons, refund proportionally
+        const appliedCoupon = originalSale.applied_coupon_paise || 0;
+        if (appliedCoupon > 0 && originalSale.grand_total_paise > 0) {
+          const refundRatio = rawRefundGrandTotal / originalSale.grand_total_paise;
+          couponToRefund = Math.round(appliedCoupon * refundRatio);
+          finalRefundGrandTotal -= couponToRefund; // Coupon value was just a discount, not cash to refund
+        }
+
+        const cust = db.prepare("SELECT id, coupon_balance_paise FROM customers WHERE phone_number = ?").get(originalSale.customer_phone);
+        if (cust) {
+          db.prepare(
+            "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = MAX(0, total_lifetime_spent_paise - ?), updated_at = datetime('now','localtime') WHERE id = ?"
+          ).run(rewardToReverse, couponToRefund, rawRefundGrandTotal, cust.id);
+        }
+      }
+
+      // Create negative sale record
+      const { lastInsertRowid: returnSaleId } = db.prepare(
+        `INSERT INTO sales (receipt_number, user_id, customer_name, customer_gstin, is_b2b, subtotal_paise, discount_paise,
+          cgst_paise, sgst_paise, igst_paise, is_inter_state, grand_total_paise, payment_mode, is_return, original_receipt_number, notes, applied_coupon_paise, reward_earned_paise)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        creditNoteNumber, userId || null, originalSale.customer_name, originalSale.customer_gstin, originalSale.is_b2b,
+        -refundSubtotalPaise, -refundDiscountPaise, -refundCgstPaise, -refundSgstPaise, -refundIgstPaise,
+        originalSale.is_inter_state, -finalRefundGrandTotal, originalSale.payment_mode, 1, receiptNum, 'Sales Return', -couponToRefund, -rewardToReverse
+      );
+
+      // Restore inventory and insert negative sale items
+      for (const data of itemsDataToInsert) {
+        const { originalItem, qtyToReturn, freeQtyToReturn, itemDiscount, lineTotal } = data;
+        const totalQuantityToRestore = qtyToReturn + freeQtyToReturn;
+
+        db.prepare(
+          `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, free_quantity, unit_price_paise, purchase_price_paise, discount_paise, gst_percent, hsn_code, line_total_paise, batch_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          returnSaleId, originalItem.product_id, originalItem.product_name, originalItem.barcode, -qtyToReturn, -freeQtyToReturn,
+          originalItem.unit_price_paise, originalItem.purchase_price_paise, -itemDiscount, originalItem.gst_percent, originalItem.hsn_code, -lineTotal, originalItem.batch_id
+        );
+
+        db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, originalItem.product_id);
+
+        db.prepare(
+          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'add', ?, ?, ?)"
+        ).run(originalItem.product_id, totalQuantityToRestore, `Return against ${receiptNum}`, userId || null);
+
+        if (originalItem.batch_id) {
+          db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, originalItem.batch_id);
+        }
+      }
+
+      // Check if the sale is fully returned to update `originalSale` notes or status if needed. We don't have a specific fully_returned flag, but that's fine.
+
+      return { success: true, creditNoteNumber, grandTotalPaise: finalRefundGrandTotal, refundCash: rawRefundGrandTotal };
+    });
+
+    const result = returnTransaction(originalReceiptNumber, returnItems);
     return result;
   } catch (err) {
     console.error('[IPC] billing:process-return error:', err);

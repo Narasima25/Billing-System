@@ -210,7 +210,12 @@ const CustomersModule = (() => {
         <td>${c.name || '<span class="badge text-muted" style="background:var(--bg-alt);">Unknown</span>'}</td>
         <td style="font-weight:600; color:var(--accent-primary);">${formatRupees(c.coupon_balance_paise)}</td>
         <td>${formatRupees(c.total_lifetime_spent_paise)}</td>
-        <td>${formatDateShort(c.created_at)}</td>
+        <td>
+          <input type="date" value="${c.created_at ? c.created_at.split(' ')[0] : ''}" 
+                 class="form-input" 
+                 style="padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; width: 110px; background: transparent; cursor: pointer;" 
+                 onchange="CustomersModule.updateJoinedDate('${phone}', this.value)">
+        </td>
         <td>
           <button class="btn btn-ghost btn-sm" onclick="CustomersModule.viewHistory('${c.phone_number}')" title="View History">
             <i data-lucide="history"></i> History
@@ -246,11 +251,17 @@ const CustomersModule = (() => {
             </td>
             <td>${sale.is_return ? '<span class="badge" style="background:var(--accent-rose);color:white;">Return</span>' : 'Sale'}</td>
             <td style="text-align:right; font-weight:700; ${sale.is_return ? 'color:var(--accent-rose);' : 'color:var(--accent-green);'}">${formatRupees(sale.grand_total_paise)}</td>
+            <td style="text-align:right;">
+              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); CustomersModule.deleteSale(${sale.id}, '${phone}')" title="Delete Sale" style="color: var(--accent-rose); padding: 4px;">
+                <i data-lucide="trash-2"></i>
+              </button>
+            </td>
           </tr>
         `).join('');
       }
 
       openModal('modal-customer-history');
+      setTimeout(() => lucide.createIcons(), 50);
     } catch (err) {
       console.error('Failed to load customer history:', err);
       showToast('Error loading customer history', 'error');
@@ -307,21 +318,20 @@ const CustomersModule = (() => {
           `<div class="r-row"><span>CGST</span><span>${formatRupees(sale.cgst_paise)}</span></div>
            <div class="r-row"><span>SGST</span><span>${formatRupees(sale.sgst_paise)}</span></div>`
         }
-        ${sale.discount_paise > 0 ? `<div class="r-row"><span>Discount</span><span>-${formatRupees(sale.discount_paise)}</span></div>` : ''}
+        ${sale.discount_paise > 0 ? `<div class="r-row"><span>Cart Discount</span><span>-${formatRupees(sale.discount_paise)}</span></div>` : ''}
         ${sale.applied_coupon_paise > 0 ? `<div class="r-row"><span>Coupon Applied</span><span>-${formatRupees(sale.applied_coupon_paise)}</span></div>` : ''}
         <div class="r-line"></div>
         <div class="r-row r-total"><span>GRAND TOTAL</span><span>${formatRupees(sale.grand_total_paise)}</span></div>
         <div class="r-line"></div>
         <div class="r-row"><span>Payment:</span><span>${(sale.payment_mode || 'cash').toUpperCase()}</span></div>
-        ${sale.reward_earned_paise > 0 ? `
-        <div class="r-line"></div>
-        <div class="r-center" style="font-weight:bold; margin-top:4px;">🎉 Congratulations! 🎉</div>
-        <div class="r-center" style="font-size:11px;">You won a bonus coupon of: ${formatRupees(sale.reward_earned_paise)}</div>
-        ` : ''}
         <div class="r-line"></div>
         <div class="r-center" style="margin-top:8px;">Thank You! Visit Again 🐾</div>
         <div class="r-center" style="font-size:10px; margin-top:4px;">${storeAddress}</div>
       `;
+
+      const receiptContainer = document.getElementById('receipt-container');
+      if (receiptContainer) receiptContainer.innerHTML = previewContent.innerHTML;
+
       previewContent.parentElement.style.width = '340px'; 
       openModal('modal-receipt-preview');
     } catch (err) {
@@ -330,7 +340,48 @@ const CustomersModule = (() => {
     }
   }
 
-  return { init, viewHistory, openWhatsAppUpdate, viewReceiptPreview };
+  async function updateJoinedDate(phone, newDateStr) {
+    if (!newDateStr) return;
+    try {
+      const result = await window.api.customers.updateJoinedDate({ phone, dateStr: newDateStr });
+      if (result.success) {
+        showToast('Joined date updated', 'success');
+        const c = allCustomers.find(x => x.phone_number === phone);
+        if (c) {
+          const oldTime = c.created_at ? c.created_at.split(' ')[1] : '00:00:00';
+          c.created_at = `${newDateStr} ${oldTime}`;
+        }
+      } else {
+        showToast('Failed to update date: ' + result.error, 'error');
+        loadCustomers();
+      }
+    } catch(err) {
+      console.error(err);
+      showToast('Error updating date', 'error');
+    }
+  }
+
+  async function deleteSale(saleId, phone) {
+    if (!confirm('Are you sure you want to completely delete this sale? This action will revert inventory and loyalty points, and cannot be undone.')) {
+      return;
+    }
+    try {
+      const result = await window.api.billing.deleteSale(saleId);
+      if (result.success) {
+        showToast('Sale deleted successfully', 'success');
+        // Refresh history modal and customer list
+        viewHistory(phone);
+        loadCustomers();
+      } else {
+        showToast('Failed to delete sale: ' + result.error, 'error');
+      }
+    } catch(err) {
+      console.error('Error deleting sale:', err);
+      showToast('Error deleting sale', 'error');
+    }
+  }
+
+  return { init, viewHistory, openWhatsAppUpdate, viewReceiptPreview, updateJoinedDate, deleteSale };
 })();
 
 // For global access (e.g. from onclick attributes)

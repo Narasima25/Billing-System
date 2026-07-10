@@ -53,11 +53,12 @@ const SuppliersModule = (() => {
                 <th>Contact Person</th>
                 <th>Mobile</th>
                 <th>Email</th>
+                <th>Current Stock Value</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody id="suppliers-tbody">
-              <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>
+              <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -166,7 +167,7 @@ const SuppliersModule = (() => {
       const suppliers = await window.api.suppliers.getAll({ includeInactive });
       loadedSuppliers = suppliers;
       if (suppliers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">No suppliers yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">No suppliers yet</td></tr>';
         return;
       }
       tbody.innerHTML = suppliers.map(s => `<tr>
@@ -177,6 +178,7 @@ const SuppliersModule = (() => {
         <td>${s.contact_person || '—'}</td>
         <td class="font-mono text-sm">${s.mobile || '—'}</td>
         <td class="text-sm">${s.email || '—'}</td>
+        <td class="font-mono text-sm fw-700" style="color:var(--accent-teal);">${formatRupees(s.current_stock_value_paise || 0)}</td>
         <td>
           <div class="btn-group" style="gap:4px;">
             ${s.is_active === 1 ? `
@@ -193,7 +195,7 @@ const SuppliersModule = (() => {
         </td>
       </tr>`).join('');
     } catch (err) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--accent-rose);">Error loading suppliers</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--accent-rose);">Error loading suppliers</td></tr>';
     }
   }
 
@@ -661,6 +663,11 @@ const SuppliersModule = (() => {
       pendingPurchaseItems[index].schemeDiscountPaise = 0;
       pendingPurchaseItems[index].explicitLineTotalPaise = undefined;
       pendingPurchaseItems[index].explicitLineGrandTotalPaise = undefined;
+    } else if (field === 'schemeDiscountPaise') {
+      const newDiscPaise = Math.round((parseFloat(value) || 0) * 100);
+      pendingPurchaseItems[index].schemeDiscountPaise = newDiscPaise;
+      pendingPurchaseItems[index].explicitLineTotalPaise = undefined;
+      pendingPurchaseItems[index].explicitLineGrandTotalPaise = undefined;
     } else if (field === 'basePricePaise') {
       const newUnitPaise = Math.round((parseFloat(value) || 0) * 100);
       pendingPurchaseItems[index].basePricePaise = newUnitPaise;
@@ -707,6 +714,9 @@ const SuppliersModule = (() => {
           ₹<input type="number" min="0" step="0.01" style="width: 70px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(baseVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
         </td>
         <td class="text-sm">
+          ₹<input type="number" min="0" step="0.01" style="width: 60px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent-amber);" value="${((item.schemeDiscountPaise || 0) / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'schemeDiscountPaise', this.value)">
+        </td>
+        <td class="text-sm">
           <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.cgstPercent}" onchange="updatePurchaseItemField(${idx}, 'cgstPercent', this.value)">% / 
           <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.sgstPercent}" onchange="updatePurchaseItemField(${idx}, 'sgstPercent', this.value)">%
         </td>
@@ -718,13 +728,15 @@ const SuppliersModule = (() => {
     }).join('');
 
     if (pendingPurchaseItems.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-muted);">No items added yet. Click "+ Add Product" to begin.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-muted);">No items added yet. Click "+ Add Product" to begin.</td></tr>`;
     }
 
     let sumOfItemTotalsPaise = 0;
+    let sumOfSchemeDiscountPaise = 0;
     pendingPurchaseItems.forEach(item => {
       let val = item.explicitLineTotalPaise !== undefined ? item.explicitLineTotalPaise : (item.basePricePaise || 0);
       sumOfItemTotalsPaise += val;
+      sumOfSchemeDiscountPaise += (item.schemeDiscountPaise || 0);
     });
 
     const gstInput = document.getElementById('purchase-summary-gst');
@@ -741,6 +753,11 @@ const SuppliersModule = (() => {
     totalInput.value = (finalInvoiceTotalPaise / 100).toFixed(2);
 
     document.getElementById('purchase-summary-items').textContent = totalItems;
+    
+    const specialDiscEl = document.getElementById('purchase-summary-special-disc');
+    if (specialDiscEl) {
+      specialDiscEl.textContent = (sumOfSchemeDiscountPaise / 100).toFixed(2);
+    }
   }
 
   async function savePurchase(isDraft = false) {

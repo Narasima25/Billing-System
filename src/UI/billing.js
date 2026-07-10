@@ -13,6 +13,8 @@ const BillingModule = (() => {
   let selectedPaymentMode = 'cash';
   let discountMode = 'amount';
   let currentGrandTotalPaise = 0;
+  let invInput = null;
+  let isInvoiceNumberEdited = false;
 
   function init() {
     if (!initialized) {
@@ -37,7 +39,7 @@ const BillingModule = (() => {
                 placeholder="Scan barcode to add item..." autocomplete="off" autofocus>
             </div>
             
-            <div class="customer-search-wrap" style="margin: 0 0 12px 0;">
+            <div class="customer-search-wrap" style="position: relative; margin: 0 0 12px 0;">
               <input type="text" id="billing-manual-search" placeholder="Or search product by name..." autocomplete="off" style="padding: 10px 14px; font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); width: 100%; background: var(--bg-input); color: var(--text-primary); outline: none;">
               <div class="customer-results" id="billing-manual-results" style="max-height: 250px; overflow-y: auto;"></div>
             </div>
@@ -71,6 +73,18 @@ const BillingModule = (() => {
             <h3><i data-lucide="credit-card"></i> Checkout</h3>
           </div>
           <div style="flex:1; overflow-y:auto; padding:16px 20px;">
+
+            <!-- Invoice Details Section -->
+            <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+              <div style="flex: 1;">
+                <label style="font-size:12px; font-weight:600; margin-bottom:4px; display:flex; align-items:center; gap:4px; color:var(--text-muted);"><i data-lucide="file-text" style="width:14px; height:14px;"></i> <span id="billing-invoice-label-text">R.N (Receipt Number)</span></label>
+                <input type="text" class="form-input" id="billing-invoice-number" placeholder="Auto Generated" style="font-weight: bold; color: var(--text-primary); border: 1px dashed var(--border); background-color: var(--bg-hover); cursor: not-allowed;" readonly disabled>
+              </div>
+              <div style="flex: 1;">
+                <label style="font-size:12px; font-weight:600; margin-bottom:4px; display:flex; align-items:center; gap:4px;"><i data-lucide="calendar" style="width:14px; height:14px;"></i> Billing Date</label>
+                <input type="date" class="form-input" id="billing-invoice-date">
+              </div>
+            </div>
 
             <!-- Customer Loyalty Section -->
             <div id="loyalty-section" class="checkout-row" style="flex-direction: column; align-items: stretch; gap: 8px; margin-bottom: 16px; background: var(--bg-card); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border);">
@@ -278,6 +292,50 @@ const BillingModule = (() => {
       }
     });
 
+    // Add barcode manually via button
+    const btnAddBarcode = document.getElementById('btn-add-barcode');
+    if (btnAddBarcode) {
+      btnAddBarcode.addEventListener('click', () => {
+        const barcode = scanner.value.trim();
+        if (barcode.length >= 3) {
+          handleScan(barcode);
+        } else {
+          showToast('Please enter a valid barcode', 'warning');
+        }
+      });
+    }
+    
+    // Initialize billing date and fetch next receipt number
+    const dateInput = document.getElementById('billing-invoice-date');
+    invInput = document.getElementById('billing-invoice-number');
+    isInvoiceNumberEdited = false;
+    
+    async function updateReceiptNumber() {
+      if (invInput) {
+        const nextNum = await window.api.billing.getNextReceiptNumber(dateInput ? dateInput.value : null);
+        invInput.value = nextNum;
+        isInvoiceNumberEdited = false;
+      }
+    }
+
+    if (invInput) {
+      invInput.addEventListener('input', () => {
+        isInvoiceNumberEdited = true;
+      });
+    }
+
+    if (dateInput) {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      dateInput.value = `${yyyy}-${mm}-${dd}`;
+      dateInput.addEventListener('change', updateReceiptNumber);
+    }
+    
+    // Initial fetch of receipt number
+    updateReceiptNumber();
+
     // Payment mode buttons
     panel.addEventListener('click', (e) => {
       const pmBtn = e.target.closest('.payment-mode-btn');
@@ -372,12 +430,15 @@ const BillingModule = (() => {
     panel.addEventListener('change', (e) => {
       if (e.target.id === 'chk-b2b') {
         const fields = document.getElementById('b2b-fields');
+        const invoiceLabelText = document.getElementById('billing-invoice-label-text');
         fields.style.display = e.target.checked ? 'flex' : 'none';
         if (e.target.checked) {
           document.getElementById('b2b-name').focus();
+          if (invoiceLabelText) invoiceLabelText.textContent = 'I.N (Invoice Number)';
         } else {
           // Clear item discounts when unticking B2B
           cart.forEach(item => item.discountPaise = 0);
+          if (invoiceLabelText) invoiceLabelText.textContent = 'R.N (Receipt Number)';
         }
         updateCartUI();
       }
@@ -948,7 +1009,9 @@ const BillingModule = (() => {
         customerPhone,
         customerAddress,
         appliedCouponPaise,
-        sendWhatsappReceipt: document.getElementById('billing-send-whatsapp') ? document.getElementById('billing-send-whatsapp').checked : false
+        invoiceDate: document.getElementById('billing-invoice-date') ? document.getElementById('billing-invoice-date').value : null,
+        sendWhatsappReceipt: document.getElementById('billing-send-whatsapp') ? document.getElementById('billing-send-whatsapp').checked : false,
+        customReceiptNumber: '' // Always auto-generate unique receipt number on backend
       });
 
       if (result.success) {
@@ -1014,13 +1077,24 @@ const BillingModule = (() => {
         }
         updateCartUI();
 
+        // Fetch new receipt number for the next sale
+        if (typeof updateReceiptNumber !== 'undefined') {
+          await updateReceiptNumber();
+        } else {
+          if (invInput) {
+            const nextNum = await window.api.billing.getNextReceiptNumber(document.getElementById('billing-invoice-date') ? document.getElementById('billing-invoice-date').value : null);
+            invInput.value = nextNum;
+            isInvoiceNumberEdited = false;
+          }
+        }
+
         showToast(`Sale ${result.receiptNumber} — ${formatRupees(result.grandTotalPaise)}`, 'success');
       } else {
         showToast('Checkout failed: ' + (result.error || 'Unknown error'), 'error');
       }
     } catch (err) {
       console.error('[Billing] checkout error:', err);
-      showToast('Checkout error', 'error');
+      showToast('Checkout error: ' + (err.message || 'Unknown error'), 'error');
     }
 
     scanner.focus();
@@ -1036,9 +1110,8 @@ const BillingModule = (() => {
     const shopGstin = settings.shop_gstin || '';
     const shopUpiId = settings.shop_upi_id || '';
 
-    const now = new Date();
-    const dateStr = formatDate(now.toISOString());
-
+    const receiptDate = saleResult.createdAt ? new Date(saleResult.createdAt.replace(' ', 'T')) : new Date();
+    const dateStr = formatDate(receiptDate.toISOString());
 
     if (saleResult.isB2B) {
       document.body.classList.add('print-b2b');
@@ -1275,9 +1348,142 @@ const BillingModule = (() => {
     showToast('New sale started', 'info');
   }
 
-  async function processReturnSubmit() {
+  let currentReturnSale = null;
+
+  async function fetchSaleForReturn() {
     const receiptNum = document.getElementById('return-receipt-number').value.trim();
     if (!receiptNum) return;
+
+    const btn = document.getElementById('btn-fetch-return');
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    try {
+      const result = await window.api.billing.getSaleForReturn(receiptNum);
+      if (result.success) {
+        currentReturnSale = result.sale;
+        renderReturnItems();
+        document.getElementById('return-items-section').style.display = 'block';
+      } else {
+        showToast(result.error || 'Receipt not found', 'error');
+        document.getElementById('return-items-section').style.display = 'none';
+        currentReturnSale = null;
+      }
+    } catch (err) {
+      showToast('Connection error', 'error');
+    }
+    btn.disabled = false;
+    btn.textContent = 'Fetch';
+  }
+
+  function renderReturnItems() {
+    const tbody = document.querySelector('#table-return-items tbody');
+    tbody.innerHTML = '';
+    
+    if (!currentReturnSale || !currentReturnSale.items) return;
+
+    currentReturnSale.items.forEach(item => {
+      const returnedSoFar = item.returned_quantity || 0;
+      const availableToReturn = item.quantity - returnedSoFar;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${item.product_name}</td>
+        <td>${item.quantity}</td>
+        <td>${returnedSoFar}</td>
+        <td>
+          <input type="number" class="form-input return-qty-input" 
+            data-id="${item.id}" 
+            data-price="${item.unit_price_paise}"
+            data-discount="${item.discount_paise / item.quantity}"
+            data-gst="${item.gst_percent}"
+            min="0" max="${availableToReturn}" value="${availableToReturn}" 
+            oninput="if(typeof BillingModule !== 'undefined') BillingModule.calculatePartialRefund()"
+            style="width: 80px;"
+            ${availableToReturn === 0 ? 'disabled' : ''}>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    calculatePartialRefund();
+  }
+
+  function calculatePartialRefund() {
+    if (!currentReturnSale) return;
+
+    let refundSubtotalPaise = 0;
+    let refundCgstPaise = 0;
+    let refundSgstPaise = 0;
+    let refundIgstPaise = 0;
+
+    const inputs = document.querySelectorAll('.return-qty-input');
+    inputs.forEach(input => {
+      const qty = parseInt(input.value) || 0;
+      if (qty <= 0) return;
+
+      const unitPrice = parseInt(input.dataset.price) || 0;
+      const unitDiscount = parseFloat(input.dataset.discount) || 0;
+      const gstPercent = parseFloat(input.dataset.gst) || 0;
+
+      const itemDiscount = Math.round(unitDiscount * qty);
+      const lineTotal = Math.max(0, (unitPrice * qty) - itemDiscount);
+
+      let taxableValue = lineTotal;
+      let itemGst = 0;
+      let cgst = 0, sgst = 0, igst = 0;
+
+      if (gstPercent > 0) {
+        taxableValue = Math.round((lineTotal * 100) / (100 + gstPercent));
+        itemGst = lineTotal - taxableValue;
+
+        if (currentReturnSale.is_inter_state) {
+          igst = itemGst;
+        } else {
+          cgst = Math.round(itemGst / 2);
+          sgst = itemGst - cgst;
+        }
+      }
+
+      refundSubtotalPaise += taxableValue;
+      refundCgstPaise += cgst;
+      refundSgstPaise += sgst;
+      refundIgstPaise += igst;
+    });
+
+    const rawRefundGrandTotal = refundSubtotalPaise + refundCgstPaise + refundSgstPaise + refundIgstPaise;
+    
+    let finalRefundGrandTotal = rawRefundGrandTotal;
+    const appliedCoupon = currentReturnSale.applied_coupon_paise || 0;
+    if (appliedCoupon > 0 && currentReturnSale.grand_total_paise > 0) {
+      const refundRatio = rawRefundGrandTotal / currentReturnSale.grand_total_paise;
+      const couponToRefund = Math.round(appliedCoupon * refundRatio);
+      finalRefundGrandTotal -= couponToRefund;
+    }
+
+    document.getElementById('return-estimated-refund').textContent = formatRupees(finalRefundGrandTotal);
+  }
+
+  async function processReturnSubmit() {
+    if (!currentReturnSale) return;
+    const receiptNum = currentReturnSale.receipt_number;
+
+    const itemsToReturn = [];
+    const inputs = document.querySelectorAll('.return-qty-input');
+    inputs.forEach(input => {
+      const qty = parseInt(input.value) || 0;
+      if (qty > 0) {
+        itemsToReturn.push({
+          saleItemId: parseInt(input.dataset.id),
+          qty: qty
+        });
+      }
+    });
+
+    if (itemsToReturn.length === 0) {
+      showToast('No items selected for return', 'warning');
+      return;
+    }
 
     try {
       const btn = document.getElementById('btn-submit-return');
@@ -1286,6 +1492,7 @@ const BillingModule = (() => {
 
       const result = await window.api.billing.processReturn({
         originalReceiptNumber: receiptNum,
+        returnItems: itemsToReturn,
         userId: currentUser ? currentUser.id : null,
       });
 
@@ -1293,6 +1500,8 @@ const BillingModule = (() => {
         showToast(`Return successful. Credit Note: ${result.creditNoteNumber}`, 'success');
         closeModal('modal-process-return');
         document.getElementById('return-receipt-number').value = '';
+        document.getElementById('return-items-section').style.display = 'none';
+        currentReturnSale = null;
       } else {
         showToast(result.error || 'Return failed', 'error');
       }
@@ -1307,6 +1516,8 @@ const BillingModule = (() => {
 
   return {
     init,
+    fetchSaleForReturn,
+    calculatePartialRefund,
     processReturnSubmit
   };
 })();

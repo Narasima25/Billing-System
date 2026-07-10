@@ -1,0 +1,37 @@
+{
+  "counter": {
+    "value": "317"
+  },
+  "sales": [
+    {
+      "receipt_number": "PET-2026-000318"
+    },
+    {
+      "receipt_number": "PET-2026-000317"
+    },
+    {
+      "receipt_number": "PET-2026-000316"
+    },
+    {
+      "receipt_number": "PET-2026-000315"
+    },
+    {
+      "receipt_number": "PET-2026-000314"
+    },
+    {
+      "receipt_number": "PET-2026-000313"
+    },
+    {
+      "receipt_number": "PET-2026-000312"
+    },
+    {
+      "receipt_number": "PET-2026-000311"
+    },
+    {
+      "receipt_number": "PET-2026-000310"
+    },
+    {
+      "receipt_number": "PET-2026-000309"
+    }
+  ]
+}

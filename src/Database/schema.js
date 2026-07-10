@@ -165,6 +165,7 @@ function initializeSchema(db) {
       hsn_code TEXT DEFAULT '',
       line_total_paise INTEGER NOT NULL,
       batch_id INTEGER,
+      returned_quantity INTEGER DEFAULT 0,
       FOREIGN KEY (sale_id) REFERENCES sales(id),
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
@@ -442,6 +443,10 @@ function initializeSchema(db) {
     db.exec(`ALTER TABLE sales ADD COLUMN customer_address TEXT DEFAULT '';`);
   } catch (err) {}
 
+  try {
+    db.exec(`ALTER TABLE sale_items ADD COLUMN returned_quantity INTEGER DEFAULT 0;`);
+  } catch (err) {}
+
   db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_active ON suppliers(is_active);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);`);
@@ -504,8 +509,9 @@ function initializeSchema(db) {
  * @param {object} db - better-sqlite3 Database instance
  * @returns {string} Receipt number
  */
-function generateReceiptNumber(db) {
-  const year = new Date().getFullYear();
+function generateReceiptNumber(db, invoiceDateStr = null) {
+  const dateObj = invoiceDateStr ? new Date(invoiceDateStr) : new Date();
+  const year = dateObj.getFullYear();
 
   // Get and increment the counter
   const result = db.prepare("SELECT value FROM settings WHERE key = 'receipt_counter'").get();
@@ -513,6 +519,20 @@ function generateReceiptNumber(db) {
   if (result && result.value) {
     counter = parseInt(result.value) || 0;
   }
+
+  // Self-heal: ensure counter is at least as high as the max existing receipt number
+  // This prevents duplicates after test scripts, corrupted restores, or manual DB edits
+  const prefix = `PET-${year}-`;
+  const maxExisting = db.prepare(
+    "SELECT receipt_number FROM sales WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1"
+  ).get(prefix + '%');
+  if (maxExisting) {
+    const existingNum = parseInt(maxExisting.receipt_number.replace(prefix, '')) || 0;
+    if (existingNum > counter) {
+      counter = existingNum;
+    }
+  }
+
   counter++;
 
   // Safety: If a receipt with this number already exists (e.g., after a corrupted restore),

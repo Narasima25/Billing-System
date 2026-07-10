@@ -77,8 +77,11 @@ contextBridge.exposeInMainWorld('api', {
     getSale: (id) => ipcRenderer.invoke('billing:get-sale', id),
     getRecentSales: (limit) => ipcRenderer.invoke('billing:get-recent-sales', limit),
     getLastSale: () => ipcRenderer.invoke('billing:get-last-sale'),
+    getSaleForReturn: (receiptNum) => ipcRenderer.invoke('billing:get-sale-for-return', receiptNum),
     processReturn: (data) => ipcRenderer.invoke('billing:process-return', data),
     getCustomer: (phone) => ipcRenderer.invoke('billing:get-customer', phone),
+    deleteSale: (id) => ipcRenderer.invoke('billing:delete-sale', id),
+    getNextReceiptNumber: (dateStr) => ipcRenderer.invoke('billing:get-next-receipt-number', dateStr),
   },
 
   // ─── Customers ───────────────────────────────────────────────────────
@@ -87,6 +90,7 @@ contextBridge.exposeInMainWorld('api', {
     getHistory: (phone) => ipcRenderer.invoke('customers:get-history', phone),
     sendUpdate: (data) => ipcRenderer.invoke('customers:send-update', data),
     sendBulkUpdate: (data) => ipcRenderer.invoke('customers:send-bulk-update', data),
+    updateJoinedDate: (data) => ipcRenderer.invoke('customers:update-joined-date', data),
   },
 
   purchases: {

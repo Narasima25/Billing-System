@@ -179,6 +179,8 @@ const ProductsModule = (() => {
       const purchasePriceGroup = document.getElementById('prod-purchase-price').closest('.form-group');
       const brandGroup = document.getElementById('prod-brand').closest('.form-group');
       const supplierGroup = document.getElementById('prod-supplier').closest('.form-group');
+      const batchGroup = document.getElementById('prod-batch').closest('.form-group');
+      const expiryGroup = document.getElementById('prod-expiry').closest('.form-group');
 
       if (isService) {
         if (!document.getElementById('prod-barcode').value || !document.getElementById('product-edit-id').value) {
@@ -188,6 +190,8 @@ const ProductsModule = (() => {
         document.getElementById('prod-gst').value = '0';
         document.getElementById('prod-stock').value = '0';
         document.getElementById('prod-min-stock').value = '0';
+        document.getElementById('prod-batch').value = '';
+        document.getElementById('prod-expiry').value = '';
 
         barcodeGroup.style.display = 'none';
         hsnGroup.style.display = 'none';
@@ -199,6 +203,8 @@ const ProductsModule = (() => {
         purchasePriceGroup.style.display = 'none';
         brandGroup.style.display = 'none';
         supplierGroup.style.display = 'none';
+        batchGroup.style.display = 'none';
+        expiryGroup.style.display = 'none';
       } else {
         if (document.getElementById('prod-barcode').value.startsWith('SRV-') && !document.getElementById('product-edit-id').value) {
             document.getElementById('prod-barcode').value = '';
@@ -217,6 +223,8 @@ const ProductsModule = (() => {
         purchasePriceGroup.style.display = '';
         brandGroup.style.display = '';
         supplierGroup.style.display = '';
+        batchGroup.style.display = '';
+        expiryGroup.style.display = '';
       }
     });
   }
