@@ -451,12 +451,12 @@ function initializeSchema(db) {
     db.exec(`ALTER TABLE sale_items ADD COLUMN returned_quantity INTEGER DEFAULT 0;`);
   } catch (err) {}
 
-  // ─── Phase 5: Reset receipt counter for update 1.0.9 ────────────────
+  // ─── Phase 5: Reset receipt counter for update 1.0.10 ────────────────
   try {
-    const checkReset = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_9_receipt_reset'").get();
+    const checkReset = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_10_receipt_reset'").get();
     if (!checkReset) {
       db.prepare("UPDATE settings SET value = '0' WHERE key = 'receipt_counter'").run();
-      db.prepare("INSERT INTO settings (key, value) VALUES ('v1_0_9_receipt_reset', '1')").run();
+      db.prepare("INSERT INTO settings (key, value) VALUES ('v1_0_10_receipt_reset', '1')").run();
     }
   } catch(e) {}
 

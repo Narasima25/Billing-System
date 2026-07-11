@@ -1598,7 +1598,7 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
 
 // ─── PURCHASES ───────────────────────────────────────────────────────────────
 
-ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceNumber, items, notes, gstPaidPaise, roundOffPaise, discountPaise, explicitTotalPaise, status, amountPaidPaise, dueDate, attachmentPath, draftId }) => {
+ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceNumber, items, notes, gstPaidPaise, roundOffPaise, discountPaise, explicitTotalPaise, status, amountPaidPaise, dueDate, attachmentPath, draftId, purchaseDate }) => {
   try {
     const purchaseTransaction = db.transaction(() => {
       if (draftId) {
@@ -1650,10 +1650,12 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
       const pDueDate = dueDate || '';
       const pAttachment = attachmentPath || '';
 
+      const pPurchaseDate = purchaseDate || new Date().toISOString().split('T')[0];
+
       // Insert Purchase Header
       const { lastInsertRowid: purchaseId } = db.prepare(
-        "INSERT INTO purchases (supplier_id, supplier_gstin, invoice_number, total_paise, gst_paid_paise, round_off_paise, discount_paise, notes, status, amount_paid_paise, due_date, attachment_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-      ).run(supplierId, supplierGstin || '', invoiceNumber || '', totalPaise, gstPaidPaise || 0, roundOffPaise || 0, discountPaise || 0, notes || '', pStatus, pAmountPaid, pDueDate, pAttachment);
+        "INSERT INTO purchases (supplier_id, supplier_gstin, invoice_number, total_paise, gst_paid_paise, round_off_paise, discount_paise, notes, status, amount_paid_paise, due_date, attachment_path, purchase_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(supplierId, supplierGstin || '', invoiceNumber || '', totalPaise, gstPaidPaise || 0, roundOffPaise || 0, discountPaise || 0, notes || '', pStatus, pAmountPaid, pDueDate, pAttachment, pPurchaseDate);
 
       // Calculate total item base value for proration
       let totalItemsBasePaise = 0;
