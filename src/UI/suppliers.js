@@ -133,6 +133,7 @@ const SuppliersModule = (() => {
     document.getElementById('btn-draft-purchase').addEventListener('click', () => savePurchase(true));
     document.getElementById('form-add-purchase').addEventListener('submit', (e) => { e.preventDefault(); savePurchase(false); });
     document.getElementById('purchase-round-off').addEventListener('input', updatePurchaseTotal);
+    document.getElementById('purchase-special-discount').addEventListener('input', updatePurchaseTotal);
     
     document.getElementById('purchase-summary-gst').addEventListener('input', (e) => {
       e.target.dataset.edited = 'true';
@@ -327,6 +328,10 @@ const SuppliersModule = (() => {
       const roundOffPaise = result.purchase.round_off_paise || 0;
       document.getElementById('pd-round-off').textContent = formatRupees(roundOffPaise);
       
+      const discountPaise = result.purchase.discount_paise || 0;
+      const pdSpecialDiscount = document.getElementById('pd-special-discount');
+      if (pdSpecialDiscount) pdSpecialDiscount.textContent = formatRupees(discountPaise);
+      
       document.getElementById('pd-total').textContent = formatRupees(totalPaise);
       
       const viewAttachBtn = document.getElementById('pd-view-attachment');
@@ -438,6 +443,7 @@ const SuppliersModule = (() => {
       document.getElementById('purchase-invoice-date').value = new Date().toISOString().split('T')[0];
       document.getElementById('purchase-continuous-scan').checked = false;
       document.getElementById('purchase-round-off').value = '0.00';
+      document.getElementById('purchase-special-discount').value = '0.00';
       const gstInput = document.getElementById('purchase-summary-gst');
       gstInput.value = '0.00';
       delete gstInput.dataset.edited;
@@ -479,6 +485,7 @@ const SuppliersModule = (() => {
       document.getElementById('purchase-invoice-date').value = purchaseObj.purchase_date ? purchaseObj.purchase_date.split(' ')[0] : new Date().toISOString().split('T')[0];
       document.getElementById('purchase-continuous-scan').checked = false;
       document.getElementById('purchase-round-off').value = (purchaseObj.round_off_paise ? (purchaseObj.round_off_paise / 100).toFixed(2) : '0.00');
+      document.getElementById('purchase-special-discount').value = (purchaseObj.discount_paise ? (purchaseObj.discount_paise / 100).toFixed(2) : '0.00');
       
       const gstInput = document.getElementById('purchase-summary-gst');
       gstInput.value = (purchaseObj.gst_paid_paise ? (purchaseObj.gst_paid_paise / 100).toFixed(2) : '0.00');
@@ -747,7 +754,10 @@ const SuppliersModule = (() => {
     const roundOffVal = parseFloat(document.getElementById('purchase-round-off').value) || 0;
     const roundOffPaise = Math.round(roundOffVal * 100);
 
-    const finalInvoiceTotalPaise = sumOfItemTotalsPaise + finalGstPaise + roundOffPaise;
+    const specialDiscVal = parseFloat(document.getElementById('purchase-special-discount').value) || 0;
+    const specialDiscPaise = Math.round(specialDiscVal * 100);
+
+    const finalInvoiceTotalPaise = sumOfItemTotalsPaise + finalGstPaise + roundOffPaise - specialDiscPaise;
 
     const totalInput = document.getElementById('purchase-grand-total');
     totalInput.value = (finalInvoiceTotalPaise / 100).toFixed(2);
@@ -758,6 +768,8 @@ const SuppliersModule = (() => {
     if (specialDiscEl) {
       specialDiscEl.textContent = (sumOfSchemeDiscountPaise / 100).toFixed(2);
     }
+    // Set the overall special discount input limit to avoid negative totals if needed
+    document.getElementById('purchase-special-discount').max = ((sumOfItemTotalsPaise + finalGstPaise + roundOffPaise) / 100).toFixed(2);
   }
 
   async function savePurchase(isDraft = false) {
@@ -793,6 +805,9 @@ const SuppliersModule = (() => {
       const roundOffVal = parseFloat(document.getElementById('purchase-round-off').value) || 0;
       const roundOffPaise = Math.round(roundOffVal * 100);
       
+      const specialDiscVal = parseFloat(document.getElementById('purchase-special-discount').value) || 0;
+      const specialDiscPaise = Math.round(specialDiscVal * 100);
+      
       const explicitTotalVal = parseFloat(document.getElementById('purchase-grand-total').value) || 0;
       const explicitTotalPaise = Math.round(explicitTotalVal * 100);
 
@@ -804,6 +819,7 @@ const SuppliersModule = (() => {
         notes,
         gstPaidPaise: totalGstPaidPaise,
         roundOffPaise: roundOffPaise,
+        discountPaise: specialDiscPaise,
         explicitTotalPaise: explicitTotalPaise,
         status,
         amountPaidPaise: 0,

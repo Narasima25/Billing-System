@@ -181,6 +181,7 @@ function initializeSchema(db) {
       supplier_id INTEGER NOT NULL,
       invoice_number TEXT DEFAULT '',
       total_paise INTEGER DEFAULT 0,
+      discount_paise INTEGER DEFAULT 0,
       gst_paid_paise INTEGER DEFAULT 0,
       notes TEXT DEFAULT '',
       purchase_date TEXT DEFAULT (datetime('now','localtime')),
@@ -410,6 +411,9 @@ function initializeSchema(db) {
   // ─── Phase 4: Customer Loyalty & Round Off Migrations ────────────────
   try {
     db.exec(`ALTER TABLE purchases ADD COLUMN round_off_paise INTEGER DEFAULT 0;`);
+  } catch(e) { /* Column might already exist */ }
+  try {
+    db.exec(`ALTER TABLE purchases ADD COLUMN discount_paise INTEGER DEFAULT 0;`);
   } catch(e) { /* Column might already exist */ }
   try {
     db.exec(`ALTER TABLE sales ADD COLUMN customer_phone TEXT DEFAULT '';`);

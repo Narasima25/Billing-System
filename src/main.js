@@ -417,7 +417,13 @@ ipcMain.handle('suppliers:get-all', async (_e, options = {}) => {
   try {
     if (options && options.includeInactive) {
       return queryAll(`
-        SELECT s.*, GROUP_CONCAT(p.invoice_number) as invoice_numbers 
+        SELECT s.*, 
+          GROUP_CONCAT(p.invoice_number) as invoice_numbers,
+          (
+            SELECT COALESCE(SUM(pr.stock_quantity * pr.selling_price_paise), 0)
+            FROM products pr
+            WHERE pr.supplier_id = s.id AND pr.stock_quantity > 0 AND pr.is_active = 1
+          ) as current_stock_value_paise
         FROM suppliers s 
         LEFT JOIN purchases p ON s.id = p.supplier_id 
         GROUP BY s.id 
@@ -425,7 +431,13 @@ ipcMain.handle('suppliers:get-all', async (_e, options = {}) => {
       `);
     }
     return queryAll(`
-      SELECT s.*, GROUP_CONCAT(p.invoice_number) as invoice_numbers 
+      SELECT s.*, 
+        GROUP_CONCAT(p.invoice_number) as invoice_numbers,
+        (
+          SELECT COALESCE(SUM(pr.stock_quantity * pr.selling_price_paise), 0)
+          FROM products pr
+          WHERE pr.supplier_id = s.id AND pr.stock_quantity > 0 AND pr.is_active = 1
+        ) as current_stock_value_paise
       FROM suppliers s 
       LEFT JOIN purchases p ON s.id = p.supplier_id 
       WHERE s.is_active = 1 
@@ -1586,7 +1598,7 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
 
 // ─── PURCHASES ───────────────────────────────────────────────────────────────
 
-ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceNumber, items, notes, gstPaidPaise, roundOffPaise, explicitTotalPaise, status, amountPaidPaise, dueDate, attachmentPath, draftId }) => {
+ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceNumber, items, notes, gstPaidPaise, roundOffPaise, discountPaise, explicitTotalPaise, status, amountPaidPaise, dueDate, attachmentPath, draftId }) => {
   try {
     const purchaseTransaction = db.transaction(() => {
       if (draftId) {
@@ -1640,11 +1652,30 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
 
       // Insert Purchase Header
       const { lastInsertRowid: purchaseId } = db.prepare(
-        "INSERT INTO purchases (supplier_id, supplier_gstin, invoice_number, total_paise, gst_paid_paise, round_off_paise, notes, status, amount_paid_paise, due_date, attachment_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-      ).run(supplierId, supplierGstin || '', invoiceNumber || '', totalPaise, gstPaidPaise || 0, roundOffPaise || 0, notes || '', pStatus, pAmountPaid, pDueDate, pAttachment);
+        "INSERT INTO purchases (supplier_id, supplier_gstin, invoice_number, total_paise, gst_paid_paise, round_off_paise, discount_paise, notes, status, amount_paid_paise, due_date, attachment_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(supplierId, supplierGstin || '', invoiceNumber || '', totalPaise, gstPaidPaise || 0, roundOffPaise || 0, discountPaise || 0, notes || '', pStatus, pAmountPaid, pDueDate, pAttachment);
+
+      // Calculate total item base value for proration
+      let totalItemsBasePaise = 0;
+      for (const item of items) {
+        if (item.explicitLineTotalPaise !== undefined) {
+           totalItemsBasePaise += item.explicitLineTotalPaise;
+        } else {
+           totalItemsBasePaise += (item.purchasePricePaise || 0) * (item.quantity || 0);
+        }
+      }
 
       for (const item of items) {
         let productId;
+
+        // Prorate invoice-level discount
+        let effectivePurchasePricePaise = item.purchasePricePaise;
+        if (discountPaise > 0 && totalItemsBasePaise > 0 && item.quantity > 0) {
+           const itemLineTotal = item.explicitLineTotalPaise !== undefined ? item.explicitLineTotalPaise : ((item.purchasePricePaise || 0) * item.quantity);
+           const discountShare = Math.round(discountPaise * (itemLineTotal / totalItemsBasePaise));
+           const discountPerUnit = Math.round(discountShare / item.quantity);
+           effectivePurchasePricePaise = Math.max(0, item.purchasePricePaise - discountPerUnit);
+        }
 
         // Check if product exists by barcode
         const existing = db.prepare("SELECT id FROM products WHERE barcode = ?").get(item.barcode);
@@ -1656,7 +1687,7 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
             const perUnitSchemeDisc = item.quantity > 0 ? Math.round((item.schemeDiscountPaise ?? 0) / item.quantity) : 0;
             db.prepare(
               "UPDATE products SET is_active = 1, base_price_paise = ?, scheme_discount_paise = ?, purchase_price_paise = ?, selling_price_paise = ?, hsn_code = ?, updated_at = datetime('now','localtime') WHERE id = ?"
-            ).run(item.basePricePaise ?? 0, perUnitSchemeDisc, item.purchasePricePaise, item.sellingPricePaise, item.hsnCode, productId);
+            ).run(item.basePricePaise ?? 0, perUnitSchemeDisc, effectivePurchasePricePaise, item.sellingPricePaise, item.hsnCode, productId);
           }
         } else {
           // Create new product
@@ -1667,7 +1698,7 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
           ).run(
             item.barcode, item.productName, item.categoryId || null, supplierId,
             item.basePricePaise ?? 0, perUnitSchemeDisc,
-            item.purchasePricePaise, item.sellingPricePaise, (item.cgstPercent + item.sgstPercent), item.hsnCode
+            effectivePurchasePricePaise, item.sellingPricePaise, (item.cgstPercent + item.sgstPercent), item.hsnCode
           );
           productId = res.lastInsertRowid;
         }
@@ -1711,7 +1742,7 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
             batchNo,
             expDate,
             totalQuantityToStock,
-            item.purchasePricePaise,
+            effectivePurchasePricePaise ?? 0,
             item.sellingPricePaise
           );
         }
