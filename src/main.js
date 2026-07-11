@@ -1035,7 +1035,7 @@ ipcMain.handle('billing:get-next-receipt-number', async (_e, dateStr) => {
     // Self-heal: ensure counter is at least as high as the max existing receipt number
     const prefix = `PET-${year}-`;
     const maxExisting = db.prepare(
-      "SELECT receipt_number FROM sales WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1"
+      "SELECT receipt_number FROM sales WHERE receipt_number LIKE ? AND length(receipt_number) < 15 ORDER BY receipt_number DESC LIMIT 1"
     ).get(prefix + '%');
     if (maxExisting) {
       const existingNum = parseInt(maxExisting.receipt_number.replace(prefix, '')) || 0;
@@ -1049,7 +1049,7 @@ ipcMain.handle('billing:get-next-receipt-number', async (_e, dateStr) => {
     let receiptNumber;
     let maxRetries = 100;
     while (maxRetries-- > 0) {
-      const padded = counter.toString().padStart(6, '0');
+      const padded = counter.toString().padStart(3, '0');
       receiptNumber = `PET-${year}-${padded}`;
       const exists = db.prepare("SELECT 1 FROM sales WHERE receipt_number = ?").get(receiptNumber);
       if (!exists) break;

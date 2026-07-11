@@ -451,6 +451,16 @@ function initializeSchema(db) {
     db.exec(`ALTER TABLE sale_items ADD COLUMN returned_quantity INTEGER DEFAULT 0;`);
   } catch (err) {}
 
+  // ─── Phase 5: Reset receipt counter for update 1.0.9 ────────────────
+  try {
+    const checkReset = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_9_receipt_reset'").get();
+    if (!checkReset) {
+      db.prepare("UPDATE settings SET value = '0' WHERE key = 'receipt_counter'").run();
+      db.prepare("INSERT INTO settings (key, value) VALUES ('v1_0_9_receipt_reset', '1')").run();
+    }
+  } catch(e) {}
+
+
   db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_active ON suppliers(is_active);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);`);
@@ -498,7 +508,7 @@ function initializeSchema(db) {
     'printer_width': '80',
     'theme': 'light',
     'last_backup': '',
-    'receipt_counter': '199',
+    'receipt_counter': '0',
   };
 
   const settingStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
@@ -528,7 +538,7 @@ function generateReceiptNumber(db, invoiceDateStr = null) {
   // This prevents duplicates after test scripts, corrupted restores, or manual DB edits
   const prefix = `PET-${year}-`;
   const maxExisting = db.prepare(
-    "SELECT receipt_number FROM sales WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1"
+    "SELECT receipt_number FROM sales WHERE receipt_number LIKE ? AND length(receipt_number) < 15 ORDER BY receipt_number DESC LIMIT 1"
   ).get(prefix + '%');
   if (maxExisting) {
     const existingNum = parseInt(maxExisting.receipt_number.replace(prefix, '')) || 0;
@@ -544,7 +554,7 @@ function generateReceiptNumber(db, invoiceDateStr = null) {
   let receiptNumber;
   let maxRetries = 100;
   while (maxRetries-- > 0) {
-    const padded = counter.toString().padStart(6, '0');
+    const padded = counter.toString().padStart(3, '0');
     receiptNumber = `PET-${year}-${padded}`;
     const exists = db.prepare("SELECT 1 FROM sales WHERE receipt_number = ?").get(receiptNumber);
     if (!exists) break;
