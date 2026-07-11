@@ -2038,11 +2038,12 @@ textarea {
 .receipt-container {
   display: none;
   font-family: 'Courier New', monospace;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 900;
   line-height: 1.4;
   color: #000;
-  width: 280px;
+  width: 100%;
+  max-width: 280px;
   -webkit-font-smoothing: none;
 }
 
@@ -2070,6 +2071,10 @@ textarea {
 }
 
 @media print {
+  @page {
+    margin: 0;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -2084,7 +2089,8 @@ textarea {
     position: absolute;
     top: 0;
     left: 0;
-    width: var(--printer-width, 80mm);
+    width: 100%;
+    max-width: var(--printer-width, 80mm);
     padding: 0;
     margin: 0;
   }
