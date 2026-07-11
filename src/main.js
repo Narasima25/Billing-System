@@ -1075,9 +1075,13 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
         const freeQuantity = parseInt(item.freeQuantity) || 0;
         const totalQuantityToDeduct = item.quantity + freeQuantity;
 
-        const product = db.prepare("SELECT stock_quantity FROM products WHERE id = ? AND is_active = 1").get(item.productId);
+        const product = db.prepare("SELECT p.stock_quantity, p.barcode, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ? AND p.is_active = 1").get(item.productId);
         if (!product) throw new Error(`Product ${item.productName} not found`);
-        if (product.stock_quantity < totalQuantityToDeduct) {
+        
+        const isService = (product.category_name || '').toLowerCase().includes('service') || (product.barcode || '').startsWith('SRV-');
+        item._isService = isService; // Stash for later
+
+        if (!isService && product.stock_quantity < totalQuantityToDeduct) {
           throw new Error(`Insufficient stock for ${item.productName} (available: ${product.stock_quantity})`);
         }
       }
@@ -1186,17 +1190,19 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
         const freeQuantity = parseInt(item.freeQuantity) || 0;
         const totalQuantityToDeduct = item.quantity + freeQuantity;
 
-        // Deduct inventory
-        db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
-          totalQuantityToDeduct, item.productId
-        );
+        if (!item._isService) {
+          // Deduct inventory
+          db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
+            totalQuantityToDeduct, item.productId
+          );
 
-        // Log adjustment
-        db.prepare(
-          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'sale', ?, ?, ?)"
-        ).run(
-          item.productId, totalQuantityToDeduct, `Sale ${receiptNumber}`, userId || null
-        );
+          // Log adjustment
+          db.prepare(
+            "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'sale', ?, ?, ?)"
+          ).run(
+            item.productId, totalQuantityToDeduct, `Sale ${receiptNumber}`, userId || null
+          );
+        }
 
         let remainingQuantityToDeduct = totalQuantityToDeduct;
 

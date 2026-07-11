@@ -588,7 +588,7 @@ const BillingModule = (() => {
       if (e.target.closest('.qty-plus')) {
         // Check stock before increasing
         const item = cart[idx];
-        if (item._stockQty && item.quantity >= item._stockQty) {
+        if (!item._isService && item._stockQty && item.quantity >= item._stockQty) {
           showToast(`Maximum stock reached (${item._stockQty})`, 'warning');
           return;
         }
@@ -611,7 +611,7 @@ const BillingModule = (() => {
         let newQty = parseInt(e.target.value);
         const item = cart[idx];
         if (!isNaN(newQty) && newQty >= 1) {
-          if (item._stockQty && newQty > item._stockQty) {
+          if (!item._isService && item._stockQty && newQty > item._stockQty) {
             newQty = item._stockQty;
             e.target.value = newQty;
             showToast(`Maximum stock reached (${item._stockQty})`, 'warning');
@@ -675,15 +675,16 @@ const BillingModule = (() => {
       // Check stock
       const existing = cart.find(c => c.barcode === barcode);
       const cartQty = existing ? existing.quantity : 0;
+      const isService = (product.category_name || '').toLowerCase().includes('service') || (product.barcode || '').startsWith('SRV-');
 
-      if (product.stock_quantity <= 0) {
+      if (!isService && product.stock_quantity <= 0) {
         flash.innerHTML = `<div class="oos-alert">🚫 <strong>${product.product_name}</strong> is <strong>OUT OF STOCK</strong></div>`;
         showToast('OUT OF STOCK — Cannot add to bill', 'warning');
         setTimeout(() => flash.innerHTML = '', 4000);
         return;
       }
 
-      if (cartQty >= product.stock_quantity) {
+      if (!isService && cartQty >= product.stock_quantity) {
         flash.innerHTML = `<div class="oos-alert">⚠️ Maximum stock reached for <strong>${product.product_name}</strong> (${product.stock_quantity} available)</div>`;
         showToast('Stock limit reached', 'warning');
         setTimeout(() => flash.innerHTML = '', 4000);
@@ -706,6 +707,7 @@ const BillingModule = (() => {
           gstPercent: product.gst_percent || 0,
           quantity: 1,
           _stockQty: product.stock_quantity,
+          _isService: isService,
           supplierName: product.supplier_name || 'N/A',
           batchNumber: firstBatch ? firstBatch.batch_number : 'N/A',
           originalCostPaise: product.base_price_paise || 0,
@@ -750,7 +752,7 @@ const BillingModule = (() => {
               </div>
               <div class="qty-control" style="margin-right: 12px; display: flex; align-items: center; gap: 4px;">
                 <button class="qty-minus" title="Decrease">−</button>
-                <input type="number" class="ci-qty-input" value="${item.quantity}" min="1" max="${item._stockQty || ''}" style="width: 45px; text-align: center; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: 600; padding: 4px 0; background: var(--bg-input); color: var(--text-primary); outline: none;">
+                <input type="number" class="ci-qty-input" value="${item.quantity}" min="1" ${item._isService ? '' : `max="${item._stockQty || ''}"`} style="width: 45px; text-align: center; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: 600; padding: 4px 0; background: var(--bg-input); color: var(--text-primary); outline: none;">
                 <button class="qty-plus" title="Increase">+</button>
               </div>
               <div style="display: flex; align-items: center; gap: 4px; margin-right: 12px;">
