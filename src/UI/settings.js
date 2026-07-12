@@ -39,17 +39,25 @@ const SettingsModule = (() => {
           </div>
           ` : ''}
 
-          <!-- Printer Settings -->
+          <!-- Cloud Backup -->
           <div class="settings-section">
-            <h3>🖨️ Printer Configuration</h3>
+            <h3>☁️ Cloud Backup</h3>
+            <p class="text-sm text-muted mb-16">Export and restore your database. Cloud sync with Google Drive or AWS S3 can be configured with API credentials.</p>
             <div class="form-group">
-              <label class="form-label">Thermal Printer Width</label>
-              <select class="form-select" id="set-printer-width">
-                <option value="58">58mm (32 characters)</option>
-                <option value="80">80mm (48 characters)</option>
-              </select>
+              <label class="form-label">Last Backup</label>
+              <div id="set-last-backup" class="text-sm text-muted">Never</div>
             </div>
-            <button class="btn btn-secondary btn-sm" id="btn-test-print">🖨️ Test Print</button>
+            <div class="btn-group">
+              <button class="btn btn-primary btn-sm" id="btn-backup-export">📤 Export Backup</button>
+              <button class="btn btn-secondary btn-sm" id="btn-backup-import">📥 Import Backup</button>
+            </div>
+          </div>
+
+          <!-- Software Update -->
+          <div class="settings-section">
+            <h3>🔄 Software Update</h3>
+            <p class="text-sm text-muted mb-16">Check for the latest features, bug fixes, and security updates.</p>
+            <button class="btn btn-primary btn-sm" id="btn-check-updates">Check for Updates</button>
           </div>
 
         </div>
@@ -126,27 +134,6 @@ const SettingsModule = (() => {
             <button class="btn btn-primary btn-sm" id="btn-save-store-config">✔ Save Store Config</button>
           </div>
 
-          <!-- Cloud Backup -->
-          <div class="settings-section">
-            <h3>☁️ Cloud Backup</h3>
-            <p class="text-sm text-muted mb-16">Export and restore your database. Cloud sync with Google Drive or AWS S3 can be configured with API credentials.</p>
-            <div class="form-group">
-              <label class="form-label">Last Backup</label>
-              <div id="set-last-backup" class="text-sm text-muted">Never</div>
-            </div>
-            <div class="btn-group">
-              <button class="btn btn-primary btn-sm" id="btn-backup-export">📤 Export Backup</button>
-              <button class="btn btn-secondary btn-sm" id="btn-backup-import">📥 Import Backup</button>
-            </div>
-          </div>
-
-          <!-- Software Update -->
-          <div class="settings-section">
-            <h3>🔄 Software Update</h3>
-            <p class="text-sm text-muted mb-16">Check for the latest features, bug fixes, and security updates.</p>
-            <button class="btn btn-primary btn-sm" id="btn-check-updates">Check for Updates</button>
-          </div>
-
         </div>
       </div>
     `;
@@ -155,7 +142,6 @@ const SettingsModule = (() => {
   function bindEvents() {
     // Settings panel click events
     panel.addEventListener('click', (e) => {
-      if (e.target.id === 'btn-test-print') testPrint();
       if (e.target.id === 'btn-backup-export') exportBackup();
       if (e.target.id === 'btn-backup-import') importBackup();
       if (e.target.id === 'btn-add-user-settings') openUserModal();
@@ -168,13 +154,6 @@ const SettingsModule = (() => {
       }
     });
 
-    // Printer width change
-    panel.addEventListener('change', async (e) => {
-      if (e.target.id === 'set-printer-width') {
-        await window.api.settings.set({ key: 'printer_width', value: e.target.value });
-        showToast('Printer width updated', 'success');
-      }
-    });
 
     // User form save
     document.getElementById('form-user').addEventListener('submit', (e) => { e.preventDefault(); saveUser(); });
@@ -183,8 +162,6 @@ const SettingsModule = (() => {
   async function loadSettings() {
     try {
       const settings = await window.api.settings.getAll();
-      document.getElementById('set-printer-width').value = settings.printer_width || '80';
-
       const lastBackup = settings.last_backup;
       document.getElementById('set-last-backup').textContent = lastBackup ? formatDate(lastBackup) : 'Never';
 
@@ -226,17 +203,6 @@ const SettingsModule = (() => {
     }
   }
 
-  function testPrint() {
-    const container = document.getElementById('receipt-container');
-    container.innerHTML = `
-      <div class="r-center r-bold" style="font-size:16px;">PRINTER TEST</div>
-      <div class="r-line"></div>
-      <div class="r-center">If you can read this, your thermal printer is configured correctly.</div>
-      <div class="r-center">🐾 SKY PETS 🐾</div>
-    `;
-    window.print();
-    showToast('Test print sent', 'info');
-  }
 
   async function exportBackup() {
     try {

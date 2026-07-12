@@ -83,7 +83,7 @@ const DashboardModule = (() => {
         <div class="stat-card indigo" style="cursor:pointer;" onclick="window.navigateTo('reports'); setTimeout(() => document.querySelector('[data-tab=\\'reconciliation\\']').click(), 50)">
           <span class="stat-icon"><i data-lucide="file-bar-chart-2"></i></span>
           <span class="stat-value text-indigo">View Report</span>
-          <span class="stat-label">Daily Reconciliation</span>
+          <span class="stat-label">Sale Report</span>
         </div>
       </div>
       ` : ''}

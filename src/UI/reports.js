@@ -30,7 +30,7 @@ const ReportsModule = (() => {
       <div class="tab-bar">
         <button class="tab-btn active" data-tab="sales">📊 GSTR-1</button>
         <button class="tab-btn" data-tab="hsn">📝 HSN Summary</button>
-        <button class="tab-btn" data-tab="reconciliation">📊 Reconciliation</button>
+        <button class="tab-btn" data-tab="reconciliation">📊 Sale Report</button>
         <button class="tab-btn" data-tab="inventory">📦 Inventory</button>
         <button class="tab-btn" data-tab="purchases">🛍️ Purchases</button>
         <button class="tab-btn" data-tab="profit">📈 Profit</button>
@@ -471,9 +471,9 @@ const ReportsModule = (() => {
     if (!date) return;
 
     try {
-      const recon = await window.api.reports.reconciliation({ date });
+      const { summary, sales } = await window.api.reports.reconciliation({ date });
       const content = document.getElementById('rpt-recon-content');
-      if (!recon || recon.length === 0) {
+      if (!summary || summary.length === 0) {
         content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No transactions on this date</p>';
         return;
       }
@@ -481,7 +481,7 @@ const ReportsModule = (() => {
       let totalCount = 0;
       let totalAmount = 0;
 
-      const rows = recon.map(r => {
+      const rows = summary.map(r => {
         totalCount += r.transaction_count;
         totalAmount += r.total_amount;
         const payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[r.payment_mode] || 'badge-teal';
@@ -492,7 +492,7 @@ const ReportsModule = (() => {
         </tr>`;
       }).join('');
 
-      content.innerHTML = `<div class="card mt-16" style="padding:0;"><div class="data-table-wrap"><table class="data-table" id="rpt-recon-table"><thead><tr>
+      let html = `<div class="card mt-16" style="padding:0;"><div class="data-table-wrap"><table class="data-table" id="rpt-recon-table"><thead><tr>
         <th>Payment Mode</th><th>Transaction Count</th><th>Total Amount</th>
       </tr></thead><tbody>
         ${rows}
@@ -502,6 +502,45 @@ const ReportsModule = (() => {
           <td class="fw-800 text-green">${formatRupees(totalAmount)}</td>
         </tr>
       </tbody></table></div></div>`;
+
+      if (sales && sales.length > 0) {
+        const salesRows = sales.map(s => {
+          let regStatus = '<span class="badge badge-amber" style="font-size:10px;">Unregistered (Walk-in)</span>';
+          if (s.is_b2b) {
+             regStatus = '<span class="badge badge-blue" style="font-size:10px;">Registered (B2B)</span>';
+          } else if (s.customer_phone || s.customer_name) {
+             regStatus = '<span class="badge badge-teal" style="font-size:10px;">Registered Customer</span>';
+          }
+          
+          let customerStr = s.customer_name || 'Walk-in';
+          if (s.customer_phone) customerStr += `<br><small class="text-muted" style="font-size:11px;">${s.customer_phone}</small>`;
+
+          const timeStr = new Date(s.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+          const payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[s.payment_mode] || 'badge-teal';
+
+          return `<tr style="cursor:pointer;" onclick="CustomersModule.viewReceiptPreview(${s.id})" title="Click to view detailed receipt">
+            <td class="fw-700 font-mono text-sm">${s.receipt_number}</td>
+            <td class="text-sm text-muted">${timeStr}</td>
+            <td>${customerStr}</td>
+            <td>${regStatus}</td>
+            <td><span class="badge ${payBadge}" style="font-size:10px;">${(s.payment_mode||'CASH').toUpperCase()}</span></td>
+            <td class="fw-700 text-green">${formatRupees(s.grand_total_paise)}</td>
+          </tr>`;
+        }).join('');
+
+        html += `
+          <h3 class="mt-24 mb-12" style="font-size:14px; font-weight:600;">Detailed Transactions</h3>
+          <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:500px; overflow-y:auto;">
+            <table class="data-table" id="rpt-recon-details-table"><thead><tr>
+              <th>Receipt No</th><th>Time</th><th>Customer</th><th>Status</th><th>Mode</th><th>Amount</th>
+            </tr></thead><tbody>
+              ${salesRows}
+            </tbody></table>
+          </div></div>
+        `;
+      }
+
+      content.innerHTML = html;
     } catch (err) {
       console.error('[Reports] Recon error:', err);
     }

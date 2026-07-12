@@ -578,6 +578,37 @@ const SuppliersModule = (() => {
     }
   });
 
+  document.getElementById('pi-category').addEventListener('change', (e) => {
+    if (e.isTrusted) {
+      const select = e.target;
+      const catName = select.options[select.selectedIndex]?.text.toLowerCase() || '';
+      const hsnInput = document.getElementById('pi-hsn');
+      const cgstInput = document.getElementById('pi-cgst');
+      const sgstInput = document.getElementById('pi-sgst');
+      
+      if (catName.includes('accessories')) {
+        hsnInput.value = '4201';
+      } else if (catName.includes('medicine')) {
+        hsnInput.value = '3004';
+      } else if (catName.includes('toy')) {
+        hsnInput.value = '9503';
+      } else if (catName.includes('live pet')) {
+        hsnInput.value = '0106';
+        cgstInput.value = '0';
+        sgstInput.value = '0';
+      } else if (catName.includes('dog food') || catName.includes('cat food')) {
+        hsnInput.value = '23091000';
+      } else if (catName.includes('feed')) {
+        hsnInput.value = '2309';
+      } else if (catName.includes('service')) {
+        hsnInput.value = '9986';
+        // set default gst for services 18% (9+9)
+        cgstInput.value = '9';
+        sgstInput.value = '9';
+      }
+    }
+  });
+
   function addPurchaseItemSubmit(historicalPurchasePricePaise = null) {
     const barcode = document.getElementById('pi-barcode').value.trim();
     const name = document.getElementById('pi-name').value.trim();

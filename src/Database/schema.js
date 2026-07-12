@@ -460,6 +460,36 @@ function initializeSchema(db) {
     }
   } catch(e) {}
 
+  // ─── Phase 6: Update HSN Codes for Pet Categories (Release Migration) ────────────────
+  try {
+    const checkHsnUpdate = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_11_hsn_update'").get();
+    if (!checkHsnUpdate) {
+      // Pet Accessories (Collars, leashes, and harnesses)
+      db.prepare(`UPDATE products SET hsn_code = '4201' WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%Accessories%')`).run();
+      
+      // Pet Medicines (Vaccines and drops)
+      db.prepare(`UPDATE products SET hsn_code = '3004' WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%Medicine%')`).run();
+      
+      // Pet Toys (Squeaky toys and balls)
+      db.prepare(`UPDATE products SET hsn_code = '9503' WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%Toy%')`).run();
+      
+      // Pet Services (Grooming and bathing)
+      db.prepare(`UPDATE products SET hsn_code = '9986' WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%Service%')`).run();
+      
+      // Live Pets (Dogs and cats)
+      db.prepare(`UPDATE products SET hsn_code = '0106', gst_percent = 0 WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%Live Pet%' OR name LIKE '%Dogs%' OR name LIKE '%Cats%')`).run();
+
+      // Dog/Cat Food
+      db.prepare(`UPDATE products SET hsn_code = '23091000' WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%Dog Food%' OR name LIKE '%Cat Food%')`).run();
+
+      // Feed (Bird/Fish)
+      db.prepare(`UPDATE products SET hsn_code = '2309' WHERE category_id IN (SELECT id FROM categories WHERE name LIKE '%Feed%')`).run();
+
+      db.prepare("INSERT INTO settings (key, value) VALUES ('v1_0_11_hsn_update', '1')").run();
+    }
+  } catch(e) {}
+
+
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_active ON suppliers(is_active);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name);`);

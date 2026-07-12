@@ -1361,22 +1361,27 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
       // 1. Restore inventory from sale items
       const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(id);
       for (const item of saleItems) {
-        const freeQty = item.free_quantity || 0;
-        const totalQuantityToRestore = item.quantity + freeQty;
+        const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(item.product_id);
+        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (item.barcode || '').startsWith('SRV-'));
 
-        if (totalQuantityToRestore > 0) {
-          // Restore product stock
-          db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.product_id);
+        if (!isService) {
+          const freeQty = item.free_quantity || 0;
+          const totalQuantityToRestore = item.quantity + freeQty;
 
-          // Restore batch quantity if applicable
-          if (item.batch_id) {
-            db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.batch_id);
+          if (totalQuantityToRestore > 0) {
+            // Restore product stock
+            db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.product_id);
+
+            // Restore batch quantity if applicable
+            if (item.batch_id) {
+              db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.batch_id);
+            }
+
+            // Log inventory adjustment
+            db.prepare(
+              "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'add', ?, ?)"
+            ).run(item.product_id, totalQuantityToRestore, `Sale Deleted: ${sale.receipt_number}`);
           }
-
-          // Log inventory adjustment
-          db.prepare(
-            "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'add', ?, ?)"
-          ).run(item.product_id, totalQuantityToRestore, `Sale Deleted: ${sale.receipt_number}`);
         }
       }
 
@@ -1400,7 +1405,7 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
       db.prepare("DELETE FROM sales WHERE id = ?").run(id);
 
       // 4. Clean up related inventory adjustments
-      db.prepare("DELETE FROM inventory_adjustments WHERE reason = ?").run(`Sale ${sale.receipt_number}`);
+      // (Inventory adjustments for the original sale are intentionally kept to preserve accurate historical auditing. The 'add' adjustment above offsets it.)
 
       return { success: true, receiptNumber: sale.receipt_number };
     });
@@ -1578,14 +1583,19 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
           originalItem.unit_price_paise, originalItem.purchase_price_paise, -itemDiscount, originalItem.gst_percent, originalItem.hsn_code, -lineTotal, originalItem.batch_id
         );
 
-        db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, originalItem.product_id);
+        const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(originalItem.product_id);
+        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (originalItem.barcode || '').startsWith('SRV-'));
 
-        db.prepare(
-          "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'add', ?, ?, ?)"
-        ).run(originalItem.product_id, totalQuantityToRestore, `Return against ${receiptNum}`, userId || null);
+        if (!isService && totalQuantityToRestore > 0) {
+          db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, originalItem.product_id);
 
-        if (originalItem.batch_id) {
-          db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, originalItem.batch_id);
+          db.prepare(
+            "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'add', ?, ?, ?)"
+          ).run(originalItem.product_id, totalQuantityToRestore, `Return against ${receiptNum}`, userId || null);
+
+          if (originalItem.batch_id) {
+            db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, originalItem.batch_id);
+          }
         }
       }
 
@@ -2148,18 +2158,27 @@ ipcMain.handle('reports:hsn-summary', async (_e, { startDate, endDate }) => {
 
 ipcMain.handle('reports:reconciliation', async (_e, { date }) => {
   try {
-    const result = queryAll(`
+    const summary = queryAll(`
       SELECT 
         payment_mode,
         COUNT(*) as transaction_count,
         SUM(grand_total_paise) as total_amount
       FROM sales
-      WHERE date(created_at) = ? AND is_return = 0
+      WHERE created_at LIKE ? AND COALESCE(is_return, 0) = 0
       GROUP BY payment_mode
-    `, [date]);
-    return result;
+    `, [date + '%']);
+
+    const sales = queryAll(`
+      SELECT 
+        id, receipt_number, customer_name, customer_phone, is_b2b, customer_gstin, payment_mode, grand_total_paise, created_at
+      FROM sales
+      WHERE created_at LIKE ? AND COALESCE(is_return, 0) = 0
+      ORDER BY created_at DESC
+    `, [date + '%']);
+
+    return { summary, sales };
   } catch (err) {
-    return [];
+    return { summary: [], sales: [] };
   }
 });
 

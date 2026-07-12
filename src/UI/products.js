@@ -182,20 +182,43 @@ const ProductsModule = (() => {
       const batchGroup = document.getElementById('prod-batch').closest('.form-group');
       const expiryGroup = document.getElementById('prod-expiry').closest('.form-group');
 
+      if (e.isTrusted || !document.getElementById('product-edit-id').value) {
+        if (catName.includes('accessories')) {
+          document.getElementById('prod-hsn').value = '4201';
+        } else if (catName.includes('medicine')) {
+          document.getElementById('prod-hsn').value = '3004';
+        } else if (catName.includes('toy')) {
+          document.getElementById('prod-hsn').value = '9503';
+        } else if (catName.includes('live pet')) {
+          document.getElementById('prod-hsn').value = '0106';
+          document.getElementById('prod-gst').value = '0';
+        } else if (catName.includes('dog food') || catName.includes('cat food')) {
+          document.getElementById('prod-hsn').value = '23091000';
+        } else if (catName.includes('feed')) {
+          document.getElementById('prod-hsn').value = '2309';
+        }
+      }
+
       if (isService) {
         if (!document.getElementById('prod-barcode').value || !document.getElementById('product-edit-id').value) {
            document.getElementById('prod-barcode').value = 'SRV-' + Date.now();
         }
-        document.getElementById('prod-hsn').value = 'NA';
-        document.getElementById('prod-gst').value = '0';
+        
+        if (e.isTrusted || !document.getElementById('product-edit-id').value) {
+           document.getElementById('prod-hsn').value = '9986';
+           document.getElementById('prod-gst').value = '18'; // default GST for services, they can edit
+        } else if (document.getElementById('prod-hsn').value === 'NA') {
+           document.getElementById('prod-hsn').value = '9986';
+        }
+
         document.getElementById('prod-stock').value = '0';
         document.getElementById('prod-min-stock').value = '0';
         document.getElementById('prod-batch').value = '';
         document.getElementById('prod-expiry').value = '';
 
         barcodeGroup.style.display = 'none';
-        hsnGroup.style.display = 'none';
-        gstGroup.style.display = 'none';
+        hsnGroup.style.display = ''; // SAC is needed
+        gstGroup.style.display = ''; // GST is needed
         stockGroup.style.display = 'none';
         minStockGroup.style.display = 'none';
         basePriceGroup.style.display = 'none';
@@ -209,7 +232,7 @@ const ProductsModule = (() => {
         if (document.getElementById('prod-barcode').value.startsWith('SRV-') && !document.getElementById('product-edit-id').value) {
             document.getElementById('prod-barcode').value = '';
         }
-        if (document.getElementById('prod-hsn').value === 'NA') {
+        if (document.getElementById('prod-hsn').value === 'NA' || document.getElementById('prod-hsn').value === '9986') {
             document.getElementById('prod-hsn').value = '';
         }
 
