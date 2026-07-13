@@ -2234,7 +2234,7 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
        FROM sale_items si
        JOIN sales s ON si.sale_id = s.id
        JOIN products p ON si.product_id = p.id
-       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?`,
+       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ? AND COALESCE(s.is_return, 0) = 0`,
       [startDate, endDate]
     );
 
@@ -2245,6 +2245,16 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
       totalRevenue += item.line_total_paise;
       totalCost += item.actual_cost_paise * item.quantity;
     });
+
+    const discountRes = queryAll(
+      `SELECT SUM(discount_paise) as total_discount
+       FROM sales
+       WHERE date(created_at) >= ? AND date(created_at) <= ? AND COALESCE(is_return, 0) = 0`,
+      [startDate, endDate]
+    );
+    const totalDiscount = discountRes[0]?.total_discount || 0;
+
+    totalRevenue -= totalDiscount;
 
     const totalProfit = totalRevenue - totalCost;
     const profitPercent = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0;

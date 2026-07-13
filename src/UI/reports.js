@@ -338,10 +338,10 @@ const ReportsModule = (() => {
     if (!table) { showToast('Generate report first', 'warning'); return; }
     let csv = 'Product,Category,Stock,Min Level,Selling Price,Value\n';
     table.querySelectorAll('tbody tr').forEach(row => {
-      const cells = row.querySelectorAll('td');
-      if (cells.length >= 6) {
-        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
-      }
+      const cols = row.querySelectorAll('td');
+      if (cols.length < 6) return;
+      const r = Array.from(cols).map(c => `"${c.innerText.replace(/"/g, '""')}"`);
+      csv += r.join(',') + '\n';
     });
     downloadCSV(csv, `inventory-report-${getToday()}.csv`);
   }
