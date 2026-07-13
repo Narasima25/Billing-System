@@ -2079,10 +2079,12 @@ textarea {
     visibility: hidden;
   }
 
-  body:not(.print-b2b) .receipt-container,
-  body:not(.print-b2b) .receipt-container * {
+  body:not(.print-b2b) .receipt-container {
     visibility: visible !important;
     display: block !important;
+  }
+  body:not(.print-b2b) .receipt-container * {
+    visibility: visible !important;
   }
 
   body:not(.print-b2b) .receipt-container {
@@ -2095,10 +2097,12 @@ textarea {
     margin: 0;
   }
 
-  body.print-b2b .invoice-container,
-  body.print-b2b .invoice-container * {
+  body.print-b2b .invoice-container {
     visibility: visible !important;
     display: block !important;
+  }
+  body.print-b2b .invoice-container * {
+    visibility: visible !important;
   }
 
   body.print-b2b .invoice-container {

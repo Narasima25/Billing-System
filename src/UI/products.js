@@ -277,7 +277,7 @@ const ProductsModule = (() => {
         categoryId: currentCategory ? parseInt(currentCategory) : null,
         stockFilter: currentStockFilter,
         page: currentPage,
-        perPage,
+        perPage: currentCategory ? 999999 : perPage,
       });
 
       loadedProducts = result.products;
