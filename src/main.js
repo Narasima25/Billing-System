@@ -1990,12 +1990,12 @@ ipcMain.handle('dashboard:get-stats', async () => {
     const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
 
     const todaySales = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE date(created_at) = ?",
-      [todayStr]
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at LIKE ? AND COALESCE(is_return, 0) = 0",
+      [`${todayStr}%`]
     );
 
     const monthlySales = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at >= ?",
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at >= ? AND COALESCE(is_return, 0) = 0",
       [monthStart]
     );
 

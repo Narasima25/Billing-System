@@ -489,6 +489,27 @@ function initializeSchema(db) {
     }
   } catch(e) {}
 
+  // ─── Phase 7: Clear old sales and customer data for v1.0.13 ────────────────
+  try {
+    const checkClearSales = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_13_clear_sales'").get();
+    if (!checkClearSales) {
+      // Delete all previous sales transactions
+      db.prepare("DELETE FROM sale_items").run();
+      db.prepare("DELETE FROM sales").run();
+      
+      // Delete all customer details
+      db.prepare("DELETE FROM customers").run();
+      
+      // Optional: Clean up inventory adjustments related to sales
+      db.prepare("DELETE FROM inventory_adjustments WHERE adjustment_type = 'sale'").run();
+
+      // Reset receipt counter to 0 so new sales start from PET-YYYY-001
+      db.prepare("UPDATE settings SET value = '0' WHERE key = 'receipt_counter'").run();
+
+      db.prepare("INSERT INTO settings (key, value) VALUES ('v1_0_13_clear_sales', '1')").run();
+    }
+  } catch(e) {}
+
 
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_suppliers_active ON suppliers(is_active);`);
