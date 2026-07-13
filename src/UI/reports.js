@@ -359,12 +359,17 @@ const ReportsModule = (() => {
       }
 
       let total = 0;
-      purchases.forEach(p => { total += p.total_paise; });
+      let totalItc = 0;
+      purchases.forEach(p => { 
+        total += p.total_paise; 
+        totalItc += (p.gst_paid_paise || 0);
+      });
 
       content.innerHTML = `
         <div class="report-summary mt-12 mb-16">
           <div class="summary-card"><span class="sc-value text-teal">${purchases.length}</span><span class="sc-label">Purchases</span></div>
           <div class="summary-card"><span class="sc-value text-rose">${formatRupees(total)}</span><span class="sc-label">Total Cost</span></div>
+          <div class="summary-card"><span class="sc-value text-blue">${formatRupees(totalItc)}</span><span class="sc-label">Total ITC</span></div>
         </div>
         <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table" id="rpt-purch-table"><thead><tr>
           <th>Invoice #</th><th>Supplier</th><th>Total</th><th>GST Paid</th><th>Date</th>
@@ -373,7 +378,7 @@ const ReportsModule = (() => {
           <td>${p.supplier_name || '—'}</td>
           <td class="fw-700 text-rose">${formatRupees(p.total_paise)}</td>
           <td class="text-sm">${formatRupees(p.gst_paid_paise || 0)}</td>
-          <td class="text-sm text-muted">${formatDate(p.created_at)}</td>
+          <td class="text-sm text-muted">${formatDate(p.purchase_date || p.created_at)}</td>
         </tr>`).join('')}</tbody></table></div></div>`;
     } catch (err) {
       console.error('[Reports] purchase error:', err);

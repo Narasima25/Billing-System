@@ -420,7 +420,7 @@ ipcMain.handle('suppliers:get-all', async (_e, options = {}) => {
         SELECT s.*, 
           GROUP_CONCAT(p.invoice_number) as invoice_numbers,
           (
-            SELECT COALESCE(SUM(pr.stock_quantity * pr.selling_price_paise), 0)
+            SELECT COALESCE(SUM(pr.stock_quantity * pr.purchase_price_paise), 0)
             FROM products pr
             WHERE pr.supplier_id = s.id AND pr.stock_quantity > 0 AND pr.is_active = 1
           ) as current_stock_value_paise
@@ -434,7 +434,7 @@ ipcMain.handle('suppliers:get-all', async (_e, options = {}) => {
       SELECT s.*, 
         GROUP_CONCAT(p.invoice_number) as invoice_numbers,
         (
-          SELECT COALESCE(SUM(pr.stock_quantity * pr.selling_price_paise), 0)
+          SELECT COALESCE(SUM(pr.stock_quantity * pr.purchase_price_paise), 0)
           FROM products pr
           WHERE pr.supplier_id = s.id AND pr.stock_quantity > 0 AND pr.is_active = 1
         ) as current_stock_value_paise

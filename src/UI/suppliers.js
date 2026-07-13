@@ -300,13 +300,13 @@ const SuppliersModule = (() => {
       div.innerHTML = `<div class="data-table-wrap"><table class="data-table"><thead><tr>
         <th>Invoice #</th><th>Status</th><th>Total</th><th>GST Paid</th><th>Items</th><th>Date</th>
       </tr></thead><tbody>` + purchases.map(p => `
-        <tr style="cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='var(--bg-alt)'" onmouseout="this.style.background=''" onclick="SuppliersModule.viewPurchaseDetails(${p.id}, '${name.replace(/'/g, "\\'").replace(/"/g, "&quot;")}', '${(p.invoice_number || '').replace(/'/g, "\\'").replace(/"/g, "&quot;")}', '${p.created_at}', ${p.total_paise}, '${p.status}')">
+        <tr style="cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='var(--bg-alt)'" onmouseout="this.style.background=''" onclick="SuppliersModule.viewPurchaseDetails(${p.id}, '${name.replace(/'/g, "\\'").replace(/"/g, "&quot;")}', '${(p.invoice_number || '').replace(/'/g, "\\'").replace(/"/g, "&quot;")}', '${p.purchase_date || p.created_at}', ${p.total_paise}, '${p.status}')">
         <td class="fw-700 font-mono text-sm">${p.invoice_number || '—'}</td>
         <td><span class="badge ${p.status === 'Draft' ? 'badge-amber' : (p.status === 'Paid' ? 'badge-green' : 'badge-blue')}">${p.status || 'Paid'}</span></td>
         <td class="fw-700 text-teal">${formatRupees(p.total_paise)}</td>
         <td class="text-sm">${formatRupees(p.gst_paid_paise || 0)}</td>
         <td>${p.item_count}</td>
-        <td class="text-sm text-muted">${formatDate(p.created_at)}</td>
+        <td class="text-sm text-muted">${formatDate(p.purchase_date || p.created_at)}</td>
       </tr>`).join('') + `</tbody></table></div>`;
     }
     openModal('modal-supplier-history');
