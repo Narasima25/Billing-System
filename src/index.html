@@ -149,6 +149,59 @@
      MODALS
      ═══════════════════════════════════════════════════════════════════════ -->
 
+  <!-- HSN/GST Auto-Fill Helper Modal -->
+  <div class="modal-overlay" id="modal-hsn-helper" style="z-index: 10000;">
+    <div class="modal-box" style="max-width: 500px;">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-hsn-helper-title"><i data-lucide="help-circle"></i> Select Type</div>
+        <button class="modal-close" onclick="closeModal('modal-hsn-helper')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+         <p style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">Please select the specific type of item to auto-fill the HSN code and GST rate:</p>
+         <div id="hsn-group-accessories" style="display: none; flex-direction: column; gap: 8px;">
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('4201 00 00', 18)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">Collars, Leashes, Harnesses, Pet Clothing</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 4201 00 00 | GST: 18%</div>
+            </button>
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('3926 90 99', 18)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">Plastic Toys & Feeding Bowls</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 3926 90 99 | GST: 18%</div>
+            </button>
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('9503 00 99', 18)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">General Toys (Rubber, Fabric, etc.)</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 9503 00 99 | GST: 18%</div>
+            </button>
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('9603 90 00', 18)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">Grooming Tools (Brushes, Combs)</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 9603 90 00 | GST: 18%</div>
+            </button>
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('8214 20 00', 18)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">Nail Clippers / Trimmers</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 8214 20 00 | GST: 18%</div>
+            </button>
+         </div>
+         <div id="hsn-group-medicine" style="display: none; flex-direction: column; gap: 8px;">
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('3004 90 85', 12)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">General Veterinary Medicines (Pills, Syrups, Ointments)</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 3004 90 85 | GST: 12%</div>
+            </button>
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('3004 90 11', 12)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">Pet Supplements & Ayurvedic/Herbal Medicines</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 3004 90 11 | GST: 12%</div>
+            </button>
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('3002 30 00', 12)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">Veterinary Vaccines</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 3002 30 00 | GST: 12%</div>
+            </button>
+            <button class="btn btn-outline" style="text-align:left; display:flex; flex-direction:column; align-items:flex-start; height:auto; padding:10px 14px; gap:4px; white-space:normal; width:100%;" onclick="window.selectHsnHelper('3006 70 00', 12)">
+               <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">Surgical/Medical Disinfectants & Lubricants</div>
+               <div style="font-size: 11px; color: var(--text-muted);">HSN: 3006 70 00 | GST: 12%</div>
+            </button>
+         </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Add/Edit Product Modal -->
   <div class="modal-overlay" id="modal-product">
     <div class="modal-box lg">
@@ -464,173 +517,126 @@
 
   <!-- Add Purchase Modal -->
   <div class="modal-overlay" id="modal-add-purchase">
-    <div class="modal-box" style="width: 98vw; max-width: 1600px; height: 95vh; padding: 0; display: flex; flex-direction: column;">
+    <div class="modal-box" style="width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; margin: 0; border-radius: 0; padding: 0; display: flex; flex-direction: column; border: none;">
       <!-- Modal Header -->
-      <div class="modal-header" style="padding: 16px 24px; margin-bottom: 0; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;">
+      <div class="modal-header" style="padding: 16px 24px; margin-bottom: 0; background: var(--bg-surface); border-radius: 0; border-bottom: 1px solid var(--border);">
         <div class="modal-title" style="font-size: 17px;"><i data-lucide="shopping-bag"></i> New Purchase Entry</div>
         <button class="modal-close" onclick="closeModal('modal-add-purchase')">✕</button>
       </div>
 
-      <form id="form-add-purchase" onsubmit="return false;" style="display: flex; flex: 1; overflow: hidden; margin: 0; flex-direction: row;">
+      <form id="form-add-purchase" onsubmit="return false;" style="display: flex; flex: 1; overflow: hidden; margin: 0; flex-direction: column;">
         <input type="hidden" id="purchase-supplier-id">
         <input type="hidden" id="purchase-draft-id">
 
-        <!-- ── LEFT SIDE: Entry Set ── -->
-        <div style="flex: 0 0 450px; padding: 24px; overflow-y: auto; background: var(--bg-surface); display: flex; flex-direction: column; border-right: 1px solid var(--border);">
+        <!-- ── TOP HALF: Entry Set ── -->
+        <div style="display: flex; flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--bg-surface); padding: 16px 24px;">
+          <div style="flex: 1; display: flex; gap: 14px; align-items: flex-end;">
+            <div class="form-group" style="margin-bottom:0; flex: 1.5;">
+              <label class="form-label" style="font-size:11px;">Supplier</label>
+              <input type="text" class="form-input" id="purchase-supplier-name" readonly style="background:var(--bg-body); font-weight:600; font-size:13px; padding: 6px 10px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0; flex: 1;">
+              <label class="form-label" style="font-size:11px;">Invoice Number</label>
+              <input type="text" class="form-input" id="purchase-invoice-number" placeholder="INV-001" style="font-size:13px; padding: 6px 10px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0; flex: 1;">
+              <label class="form-label" style="font-size:11px;">Supplier GSTIN</label>
+              <input type="text" class="form-input" id="purchase-supplier-gstin" placeholder="GSTIN" style="font-size:13px; padding: 6px 10px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0; flex: 1;">
+              <label class="form-label" style="font-size:11px;">Date of Invoice *</label>
+              <input type="date" class="form-input" id="purchase-invoice-date" required style="font-size:13px; padding: 6px 10px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0; flex: 2;">
+              <label class="form-label" style="font-size:11px;">Notes</label>
+              <input type="text" class="form-input" id="purchase-notes" placeholder="Optional notes..." style="font-size:13px; padding: 6px 10px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- ── BOTTOM HALF: Added Data & Totals ── -->
+        <div style="flex: 1; display: flex; flex-direction: column; background: var(--bg-body); overflow: hidden;">
           
-          <!-- Section: Invoice Details -->
-          <div style="margin-bottom: 20px;">
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
-              <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">1</span>
-              <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Invoice Details</span>
-            </div>
-            <div class="form-row" style="grid-template-columns: 1fr; gap: 14px;">
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" style="font-size:12px;">Supplier</label>
-                <input type="text" class="form-input" id="purchase-supplier-name" readonly style="background:var(--bg-surface); font-weight:600;">
-              </div>
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" style="font-size:12px;">Invoice Number</label>
-                <input type="text" class="form-input" id="purchase-invoice-number" placeholder="e.g. INV-2026-001">
-              </div>
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" style="font-size:12px;">Supplier GSTIN</label>
-                <input type="text" class="form-input" id="purchase-supplier-gstin" placeholder="15-digit GSTIN">
-              </div>
-            </div>
-          </div>
-
-          <!-- Section: Invoice Date -->
-          <div style="margin-bottom: 20px;">
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
-              <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">2</span>
-              <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Invoice Date</span>
-            </div>
-            <div class="form-row" style="grid-template-columns: 1fr; gap: 14px;">
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" style="font-size:12px;">Date of Invoice *</label>
-                <input type="date" class="form-input" id="purchase-invoice-date" required>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section: Add Products -->
-          <div style="margin-bottom: 20px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700;">3</span>
-                <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Add Products</span>
-              </div>
+          <!-- Items Table (takes remaining space) -->
+          <div class="data-table-wrap" style="flex: 1; padding: 16px 24px; overflow-y: auto;">
+            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight:700; font-size:15px; color:var(--text-primary);">Added Products</span>
               <label style="font-size:12px; display:flex; align-items:center; gap:5px; cursor:pointer; color:var(--text-secondary); user-select:none;">
                 <input type="checkbox" id="purchase-continuous-scan" style="accent-color:var(--accent-primary);"> Continuous Scan
               </label>
             </div>
-
-            <!-- Item Entry Card -->
-            <div style="padding: 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Barcode *</label>
-                  <div style="display:flex; gap:4px;">
-                    <input type="text" class="form-input" id="pi-barcode" placeholder="Scan/Type" style="padding: 7px 10px; font-size: 13px;">
-                    <button type="button" class="btn btn-secondary" id="btn-pi-lookup" style="padding: 7px 10px; font-size: 12px;">🔍</button>
-                  </div>
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Product Name *</label>
-                  <input type="text" class="form-input" id="pi-name" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">HSN</label>
-                  <input type="text" class="form-input" id="pi-hsn" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Category</label>
-                  <select class="form-select" id="pi-category" style="padding: 7px 10px; font-size: 13px;">
-                    <option value="">— Select —</option>
-                  </select>
-                </div>
-              </div>
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Qty *</label>
-                  <input type="number" class="form-input" id="pi-qty" value="1" min="1" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Free Qty</label>
-                  <input type="number" class="form-input" id="pi-free-qty" value="0" min="0" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Base Price ₹</label>
-                  <input type="number" class="form-input" id="pi-base-price" step="0.01" min="0" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Scheme Disc</label>
-                  <input type="text" class="form-input" id="pi-scheme-disc" placeholder="50 or 10%" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0; grid-column: span 2;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Final Purchase ₹ *</label>
-                  <input type="number" class="form-input" id="pi-purchase-price" step="0.01" min="0" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-              </div>
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Batch</label>
-                  <input type="text" class="form-input" id="pi-batch" placeholder="Batch No" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Expiry</label>
-                  <input type="month" class="form-input" id="pi-expiry" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Selling ₹ *</label>
-                  <input type="number" class="form-input" id="pi-selling-price" step="0.01" min="0" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">CGST%</label>
-                  <input type="number" class="form-input" id="pi-cgst" value="0" min="0" step="0.01" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-                <div style="margin-bottom:0;">
-                  <label class="form-label" style="font-size: 11px; margin-bottom: 3px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">SGST%</label>
-                  <input type="number" class="form-input" id="pi-sgst" value="0" min="0" step="0.01" style="padding: 7px 10px; font-size: 13px;">
-                </div>
-              </div>
-              <button type="button" class="btn btn-primary" id="btn-save-purchase-item" style="width: 100%; padding: 10px; font-size: 14px;">+ Add Product to Table</button>
-            </div>
-          </div>
-
-          <!-- Notes -->
-          <div class="form-group" style="margin-bottom:24px;">
-            <label class="form-label" style="font-size:12px;">Notes</label>
-            <textarea class="form-textarea" id="purchase-notes" placeholder="Optional notes about this purchase..." style="min-height:60px;"></textarea>
-          </div>
-        </div>
-
-        <!-- ── LEFT SIDE: Added Data & Totals ── -->
-        <div style="flex: 1; display: flex; flex-direction: column; background: var(--bg-body); overflow: hidden;">
-          
-          <!-- Items Table (takes remaining space) -->
-          <div class="data-table-wrap" style="flex: 1; padding: 24px; overflow-y: auto;">
-            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-weight:700; font-size:15px; color:var(--text-primary);">Added Products</span>
-            </div>
             <table class="data-table" style="min-width: 100%;">
               <thead>
                 <tr>
-                  <th style="font-size:11px;">Barcode</th>
-                  <th style="font-size:11px;">Product</th>
-                  <th style="font-size:11px;">HSN/Batch</th>
-                  <th style="width: 60px; font-size:11px;">Qty</th>
-                  <th style="width: 60px; font-size:11px;">Free</th>
-                  <th style="width: 90px; font-size:11px;">Base Price</th>
-                  <th style="width: 80px; font-size:11px;">Scheme Disc</th>
-                  <th style="width: 100px; font-size:11px;">CGST / SGST</th>
-                  <th style="width: 90px; font-size:11px;">Total</th>
-                  <th style="width: 36px;"></th>
+                  <th style="font-size:10px; width: 100px;">Barcode *</th>
+                  <th style="font-size:10px; width: 140px;">Product * <span style="font-weight:normal;color:#888;">(Cat)</span></th>
+                  <th style="font-size:10px; width: 60px;">HSN Code</th>
+                  <th style="font-size:10px; width: 70px;">Expiry <span style="font-weight:normal;color:#888;">(Batch)</span></th>
+                  <th style="font-size:10px; width: 70px;">MRP ₹</th>
+                  <th style="font-size:10px; width: 60px;">Disc ₹/%</th>
+                  <th style="font-size:10px; width: 50px;">Qty *</th>
+                  <th style="font-size:10px; width: 80px;">Base ₹ <a href="#" onclick="calculateBasePrice(); return false;" style="color:var(--accent-primary); font-size:9px;">(Auto)</a></th>
+                  <th style="font-size:10px; width: 50px;">Free</th>
+                  <th style="font-size:10px; width: 80px;">Taxable ₹</th>
+                  <th style="font-size:10px; width: 70px;">CGST <span style="font-weight:normal;color:#888;">(%/₹)</span></th>
+                  <th style="font-size:10px; width: 70px;">SGST <span style="font-weight:normal;color:#888;">(%/₹)</span></th>
+                  <th style="font-size:10px; width: 80px;">Total ₹</th>
+                  <th style="width: 30px;"></th>
                 </tr>
               </thead>
+              <tbody style="background: #f8fafc;">
+                <!-- INLINE INPUT ROW -->
+                <tr>
+                  <!-- 1. Barcode -->
+                  <td style="padding: 4px;">
+                    <div style="display:flex; gap:2px;">
+                      <input type="text" class="form-input" id="pi-barcode" placeholder="Scan" style="padding: 4px; font-size: 11px; min-width: 0; border: 1px solid var(--accent-primary);">
+                      <button type="button" class="btn btn-secondary" id="btn-pi-lookup" style="padding: 4px; font-size: 11px;">🔍</button>
+                    </div>
+                  </td>
+                  <!-- 2. Product -->
+                  <td style="padding: 4px;">
+                    <input type="text" class="form-input" id="pi-name" placeholder="Name" style="padding: 4px; font-size: 11px; margin-bottom: 2px;">
+                    <select class="form-select" id="pi-category" style="padding: 2px; font-size: 10px; width: 100%;">
+                      <option value="">— Cat —</option>
+                    </select>
+                  </td>
+                  <!-- 3. HSN Code -->
+                  <td style="padding: 4px;"><input type="text" class="form-input" id="pi-hsn" placeholder="HSN" style="padding: 4px; font-size: 11px; text-align:center;"></td>
+                  <!-- 4. Expiry -->
+                  <td style="padding: 4px;">
+                    <input type="month" class="form-input" id="pi-expiry" style="padding: 2px; font-size: 10px; margin-bottom: 2px; width: 100%;">
+                    <input type="text" class="form-input" id="pi-batch" placeholder="Batch" style="padding: 2px; font-size: 10px; width: 100%;">
+                  </td>
+                  <!-- 5. MRP -->
+                  <td style="padding: 4px;"><input type="number" class="form-input" id="pi-selling-price" placeholder="0.00" step="0.01" min="0" style="padding: 4px; font-size: 11px; text-align:right;"></td>
+                  <!-- 6. Disc -->
+                  <td style="padding: 4px;"><input type="text" class="form-input" id="pi-scheme-disc" placeholder="0.00" style="padding: 4px; font-size: 11px; text-align:center;"></td>
+                  <!-- 7. Qty -->
+                  <td style="padding: 4px;"><input type="number" class="form-input" id="pi-qty" value="1" min="1" style="padding: 4px; font-size: 11px; text-align:center;"></td>
+                  <!-- 8. Base Price -->
+                  <td style="padding: 4px;"><input type="number" class="form-input" id="pi-base-price" step="0.01" min="0" placeholder="0.00" style="padding: 4px; font-size: 11px; text-align:right;"></td>
+                  <!-- 9. Free -->
+                  <td style="padding: 4px;"><input type="number" class="form-input" id="pi-free-qty" value="0" min="0" style="padding: 4px; font-size: 11px; text-align:center;"></td>
+                  <!-- 10. Taxable Amount -->
+                  <td style="padding: 4px;"><input type="number" class="form-input" id="pi-taxable-amount" placeholder="0.00" step="0.01" style="padding: 4px; font-size: 11px; text-align:right;"></td>
+                  <!-- 11. CGST -->
+                  <td style="padding: 4px;">
+                    <input type="number" class="form-input" id="pi-cgst" value="0" min="0" step="0.01" placeholder="%" style="padding: 2px; font-size: 10px; margin-bottom: 2px; text-align:center;">
+                    <input type="number" class="form-input" id="pi-cgst-amt" placeholder="₹0.00" style="padding: 2px; font-size: 10px; background: #eee; text-align:center;" readonly>
+                  </td>
+                  <!-- 12. SGST -->
+                  <td style="padding: 4px;">
+                    <input type="number" class="form-input" id="pi-sgst" value="0" min="0" step="0.01" placeholder="%" style="padding: 2px; font-size: 10px; margin-bottom: 2px; text-align:center;">
+                    <input type="number" class="form-input" id="pi-sgst-amt" placeholder="₹0.00" style="padding: 2px; font-size: 10px; background: #eee; text-align:center;" readonly>
+                  </td>
+                  <!-- 13. Total Amount -->
+                  <td style="padding: 4px;"><input type="number" class="form-input" id="pi-purchase-price" step="0.01" min="0" placeholder="0.00" style="padding: 4px; font-size: 11px; font-weight: bold; color: var(--accent-primary); text-align:right;"></td>
+                  <td style="padding: 4px; vertical-align: middle;"><button type="button" class="btn btn-primary" id="btn-save-purchase-item" style="padding: 6px; width: 100%; border-radius: 4px; font-size:14px; display:flex; align-items:center; justify-content:center;" title="Add Product">+</button></td>
+                </tr>
+              </tbody>
               <tbody id="purchase-items-tbody">
-                <!-- Dynamically added items go here -->
+                <tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-muted);">No items added yet. Search a barcode above to begin.</td></tr>
               </tbody>
             </table>
           </div>
@@ -750,16 +756,19 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Product</th>
-                <th>HSN/Batch</th>
-                <th style="text-align:right;">Qty</th>
-                <th style="text-align:right;">Free</th>
-                <th style="text-align:right;">Base Price</th>
-                <th style="text-align:right;">Sch. Disc</th>
-                <th style="text-align:right; display:none;">Pur. Price</th>
-                <th style="text-align:right;">Selling</th>
-                <th style="text-align:right;">GST</th>
-                <th style="text-align:right;">Total</th>
+                <th style="font-size:10px;">Barcode</th>
+                <th style="font-size:10px;">Product</th>
+                <th style="font-size:10px;">HSN Code</th>
+                <th style="font-size:10px;">Expiry</th>
+                <th style="font-size:10px; text-align:right;">MRP ₹</th>
+                <th style="font-size:10px; text-align:right;">Disc ₹</th>
+                <th style="font-size:10px; text-align:right;">Qty</th>
+                <th style="font-size:10px; text-align:right;">Base ₹</th>
+                <th style="font-size:10px; text-align:right;">Free</th>
+                <th style="font-size:10px; text-align:right;">Taxable ₹</th>
+                <th style="font-size:10px; text-align:right;">CGST</th>
+                <th style="font-size:10px; text-align:right;">SGST</th>
+                <th style="font-size:10px; text-align:right;">Total ₹</th>
               </tr>
             </thead>
             <tbody id="pd-items-tbody">
@@ -1406,6 +1415,26 @@
       });
     }
 
+    // HSN/GST Helper Global Function
+    window.selectHsnHelper = function(hsnCode, gstRate) {
+      const context = window.hsnHelperContext;
+      if (context === 'product') {
+         const hsnInput = document.getElementById('prod-hsn');
+         const gstSelect = document.getElementById('prod-gst');
+         if (hsnInput) hsnInput.value = hsnCode;
+         if (gstSelect) {
+            gstSelect.value = gstRate.toString();
+         }
+      } else if (context === 'purchase') {
+         const hsnInput = document.getElementById('pi-hsn');
+         const cgstInput = document.getElementById('pi-cgst');
+         const sgstInput = document.getElementById('pi-sgst');
+         if (hsnInput) hsnInput.value = hsnCode;
+         if (cgstInput) cgstInput.value = (gstRate / 2).toString();
+         if (sgstInput) sgstInput.value = (gstRate / 2).toString();
+      }
+      closeModal('modal-hsn-helper');
+    };
   </script>
 
 </body>

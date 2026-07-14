@@ -33,6 +33,7 @@ const ReportsModule = (() => {
         <button class="tab-btn" data-tab="reconciliation">📊 Sale Report</button>
         <button class="tab-btn" data-tab="inventory">📦 Inventory</button>
         <button class="tab-btn" data-tab="purchases">🛍️ Purchases</button>
+        <button class="tab-btn" data-tab="services">🛠️ Services</button>
         <button class="tab-btn" data-tab="profit">📈 Profit</button>
       </div>
 
@@ -86,6 +87,23 @@ const ReportsModule = (() => {
           <button class="btn btn-secondary btn-sm" id="rpt-purch-export">📥 Export CSV</button>
         </div>
         <div id="rpt-purch-content"></div>
+      </div>
+
+      <!-- Services Report -->
+      <div class="tab-pane" id="rpt-tab-services">
+        <div class="report-filters">
+          <div class="form-group">
+            <label class="form-label">From</label>
+            <input type="date" class="form-input" id="rpt-services-from" value="${monthStart}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">To</label>
+            <input type="date" class="form-input" id="rpt-services-to" value="${today}">
+          </div>
+          <button class="btn btn-primary btn-sm" id="rpt-services-run">Generate</button>
+        </div>
+        <div id="rpt-services-summary" class="report-summary mt-16"></div>
+        <div id="rpt-services-content"></div>
       </div>
 
       <!-- Profit Report -->
@@ -162,6 +180,9 @@ const ReportsModule = (() => {
     // Purchase report
     document.getElementById('rpt-purch-run').addEventListener('click', runPurchaseReport);
     document.getElementById('rpt-purch-export').addEventListener('click', exportPurchaseCSV);
+
+    // Services report
+    document.getElementById('rpt-services-run').addEventListener('click', runServicesReport);
 
     // Profit report
     document.getElementById('rpt-profit-run').addEventListener('click', runProfitReport);
@@ -396,6 +417,47 @@ const ReportsModule = (() => {
       }
     });
     downloadCSV(csv, `purchases-${getToday()}.csv`);
+  }
+
+  // ─── Services Report ──────────────────────────────────────────────────
+  async function runServicesReport() {
+    const from = document.getElementById('rpt-services-from').value;
+    const to = document.getElementById('rpt-services-to').value;
+    if (!from || !to) { showToast('Select date range', 'warning'); return; }
+
+    try {
+      const { summary, sales } = await window.api.reports.services({ startDate: from, endDate: to });
+      const content = document.getElementById('rpt-services-content');
+      
+      if (!sales || sales.length === 0) {
+        document.getElementById('rpt-services-summary').innerHTML = '';
+        content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No services billed in this period</p>';
+        return;
+      }
+
+      document.getElementById('rpt-services-summary').innerHTML = `
+        <div class="summary-card"><span class="sc-value text-teal">${summary.total_sales}</span><span class="sc-label">Service Bills</span></div>
+        <div class="summary-card"><span class="sc-value text-green">${formatRupees(summary.total_grand)}</span><span class="sc-label">Revenue</span></div>
+        <div class="summary-card"><span class="sc-value text-blue">${formatRupees(summary.total_cgst + summary.total_sgst + summary.total_igst)}</span><span class="sc-label">Total GST</span></div>
+      `;
+
+      content.innerHTML = `
+        <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table" id="rpt-services-table"><thead><tr>
+          <th>Receipt #</th><th>Cashier</th><th>Items</th><th>Base Amount</th><th>GST</th><th>Total</th><th>Date</th>
+        </tr></thead><tbody>${sales.map(s => {
+          const gst = s.cgst_paise + s.sgst_paise + s.igst_paise;
+          return `<tr>
+          <td class="fw-700 font-mono text-sm">${s.receipt_number || '—'}</td>
+          <td>${s.cashier_name || '—'}</td>
+          <td class="fw-700">${s.item_count}</td>
+          <td class="text-sm">${formatRupees(s.subtotal_paise)}</td>
+          <td class="text-sm">${formatRupees(gst)}</td>
+          <td class="fw-700 text-green">${formatRupees(s.grand_total_paise)}</td>
+          <td class="text-sm text-muted">${formatDate(s.created_at)}</td>
+        </tr>`}).join('')}</tbody></table></div></div>`;
+    } catch (err) {
+      console.error('[Reports] services error:', err);
+    }
   }
 
   // ─── Profit Report ────────────────────────────────────────────────────

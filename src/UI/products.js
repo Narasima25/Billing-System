@@ -167,7 +167,7 @@ const ProductsModule = (() => {
     document.getElementById('prod-category').addEventListener('change', (e) => {
       const select = e.target;
       const catName = select.options[select.selectedIndex]?.text.toLowerCase() || '';
-      const isService = catName.includes('service');
+      const isService = catName.includes('service') || catName.includes('grooming');
 
       const barcodeGroup = document.getElementById('prod-barcode').closest('.form-group');
       const hsnGroup = document.getElementById('prod-hsn').closest('.form-group');
@@ -183,12 +183,24 @@ const ProductsModule = (() => {
       const expiryGroup = document.getElementById('prod-expiry').closest('.form-group');
 
       if (e.isTrusted || !document.getElementById('product-edit-id').value) {
-        if (catName.includes('accessories')) {
-          document.getElementById('prod-hsn').value = '4201';
+        if (catName.includes('accessori') || catName.includes('toy') || catName.includes('groom')) {
+          if (e.isTrusted) {
+            window.hsnHelperContext = 'product';
+            document.getElementById('hsn-group-accessories').style.display = 'flex';
+            document.getElementById('hsn-group-medicine').style.display = 'none';
+            document.getElementById('modal-hsn-helper-title').innerHTML = '<i data-lucide="help-circle"></i> Select Accessory Type';
+            openModal('modal-hsn-helper');
+          }
         } else if (catName.includes('medicine')) {
-          document.getElementById('prod-hsn').value = '3004';
-        } else if (catName.includes('toy')) {
-          document.getElementById('prod-hsn').value = '9503';
+          if (e.isTrusted) {
+            window.hsnHelperContext = 'product';
+            document.getElementById('hsn-group-accessories').style.display = 'none';
+            document.getElementById('hsn-group-medicine').style.display = 'flex';
+            document.getElementById('modal-hsn-helper-title').innerHTML = '<i data-lucide="help-circle"></i> Select Medicine Type';
+            openModal('modal-hsn-helper');
+          } else {
+            document.getElementById('prod-hsn').value = '3004';
+          }
         } else if (catName.includes('live pet')) {
           document.getElementById('prod-hsn').value = '0106';
           document.getElementById('prod-gst').value = '0';
@@ -289,8 +301,8 @@ const ProductsModule = (() => {
         return;
       }
 
-      tbody.innerHTML = result.products.map(p => {
-        const isService = (p.category_name || '').toLowerCase().includes('service') || (p.barcode || '').startsWith('SRV-');
+      const renderRow = (p) => {
+        const isService = (p.category_name || '').toLowerCase().includes('service') || (p.category_name || '').toLowerCase().includes('grooming') || (p.barcode || '').startsWith('SRV-');
         
         let stockClass = 'ok';
         if (p.stock_quantity === 0) stockClass = 'critical';
@@ -302,21 +314,39 @@ const ProductsModule = (() => {
             ${p.brand ? `<div class="text-sm text-muted">${p.brand}</div>` : ''}
           </td>
           <td><span class="font-mono text-sm">${p.barcode}</span></td>
-          <td>${p.category_name ? `<span class="badge badge-teal">${p.category_name}</span>` : '<span class="text-muted">—</span>'}</td>
-          <td><span class="font-mono text-sm">${p.hsn_code || '—'}</span></td>
+          <td>${p.category_name ? `<span class="badge badge-teal">${p.category_name}</span>` : '<span class="text-muted">�</span>'}</td>
+          <td><span class="font-mono text-sm">${p.hsn_code || '�'}</span></td>
           <td>${formatRupees(p.base_price_paise)}</td>
           <td class="fw-700">${formatRupees(p.selling_price_paise)}</td>
           <td>${p.gst_percent || 0}%</td>
-          <td>${isService ? '<span class="text-muted">—</span>' : `<span class="stock-badge ${stockClass}">${p.stock_quantity}</span>`}</td>
+          <td>${isService ? '<span class="text-muted">�</span>' : `<span class="stock-badge ${stockClass}">${p.stock_quantity}</span>`}</td>
           <td>
             <div class="btn-group" style="gap:4px;">
-              <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${p.id}" title="Edit">✏️</button>
-              ${isService ? '' : `<button class="btn btn-ghost btn-sm" data-action="adjust" data-id="${p.id}" data-name="${p.product_name}" data-barcode="${p.barcode}" title="Adjust Stock">📦</button>`}
-              <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${p.id}" title="Delete">🗑️</button>
+              <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${p.id}" title="Edit">??</button>
+              ${isService ? '' : `<button class="btn btn-ghost btn-sm" data-action="adjust" data-id="${p.id}" data-name="${p.product_name}" data-barcode="${p.barcode}" title="Adjust Stock">??</button>`}
+              <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${p.id}" title="Delete">???</button>
             </div>
           </td>
         </tr>`;
-      }).join('');
+      };
+
+      if (result.products.length <= 100) {
+        tbody.innerHTML = result.products.map(renderRow).join('');
+      } else {
+        tbody.innerHTML = '';
+        let idx = 0;
+        const chunkSize = 100;
+        const processChunk = () => {
+          const chunk = result.products.slice(idx, idx + chunkSize);
+          if (chunk.length === 0) return;
+          tbody.insertAdjacentHTML('beforeend', chunk.map(renderRow).join(''));
+          idx += chunkSize;
+          if (idx < result.products.length) {
+            requestAnimationFrame(processChunk);
+          }
+        };
+        requestAnimationFrame(processChunk);
+      }
 
       // Pagination
       renderPagination(result.total, result.page, result.perPage);

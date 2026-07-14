@@ -512,7 +512,7 @@ const BillingModule = (() => {
           resultsDiv.innerHTML = `<div class="customer-result-item text-muted">No products found</div>`;
         } else {
           resultsDiv.innerHTML = products.map((p, idx) => {
-            const isService = (p.category_name || '').toLowerCase().includes('service') || (p.barcode || '').startsWith('SRV-');
+            const isService = (p.category_name || '').toLowerCase().includes('service') || (p.category_name || '').toLowerCase().includes('grooming') || (p.barcode || '').startsWith('SRV-');
             const isOOS = !isService && p.stock_quantity <= 0;
             const stockDisplay = isService ? '' : `<div class="text-sm ${isOOS ? 'text-rose' : 'text-green'}" style="margin-top:2px;">Stock: ${p.stock_quantity}</div>`;
             return `<div class="customer-result-item" data-barcode="${p.barcode}" data-index="${idx}" style="display:flex; justify-content:space-between; align-items:center; ${isOOS ? 'opacity:0.6;' : ''}">
@@ -675,7 +675,7 @@ const BillingModule = (() => {
       // Check stock
       const existing = cart.find(c => c.barcode === barcode);
       const cartQty = existing ? existing.quantity : 0;
-      const isService = (product.category_name || '').toLowerCase().includes('service') || (product.barcode || '').startsWith('SRV-');
+      const isService = (product.category_name || '').toLowerCase().includes('service') || (product.category_name || '').toLowerCase().includes('grooming') || (product.barcode || '').startsWith('SRV-');
 
       if (!isService && product.stock_quantity <= 0) {
         flash.innerHTML = `<div class="oos-alert">🚫 <strong>${product.product_name}</strong> is <strong>OUT OF STOCK</strong></div>`;
@@ -917,9 +917,10 @@ const BillingModule = (() => {
   }
 
   async function handleCheckout() {
-    if (cart.length === 0) { showToast('Cart is empty — scan items first', 'warning'); return; }
+    if (cart.length === 0) { showToast('Cart is empty - scan items first', 'warning'); return; }
 
     const discountPaise = parseRupeesToPaise(document.getElementById('billing-discount').value || '0');
+    const appliedCouponPaise = parseRupeesToPaise(document.getElementById('billing-applied-coupon') ? document.getElementById('billing-applied-coupon').value || '0' : '0');
 
     const cartItems = cart.map(item => ({
       productId: item.productId,
@@ -948,36 +949,25 @@ const BillingModule = (() => {
       const customerPhone = isB2B 
         ? (document.getElementById('b2b-phone') ? document.getElementById('b2b-phone').value.trim() : '')
         : (document.getElementById('billing-customer-phone') ? document.getElementById('billing-customer-phone').value.trim() : '');
-      const customerAddress = document.getElementById('b2b-address') ? document.getElementById('b2b-address').value.trim() : '';
-      const appliedCouponPaise = parseRupeesToPaise(document.getElementById('billing-applied-coupon') ? document.getElementById('billing-applied-coupon').value || '0' : '0');
 
-      if (!isB2B && customerPhone) {
-        customerName = document.getElementById('billing-customer-name').value.trim();
+      if (!isB2B && document.getElementById('billing-customer-name')) {
+        customerName = document.getElementById('billing-customer-name').value.trim() || customerName;
       }
 
-      // Enforce customer state for inter-state sales
-      if (isInterState && !customerStateCode) {
-        showToast('Please select Customer State for inter-state sale', 'warning');
-        return;
-      }
-
-      // Calculate approximate grand total to check B2C thresholds
       let approxTotal = 0;
-      cart.forEach(item => {
-        const lineTotal = item.unitPricePaise * item.quantity;
-        approxTotal += lineTotal + Math.round(lineTotal * (item.gstPercent || 0) / 100);
-      });
-      approxTotal -= discountPaise;
+      cartItems.forEach(i => approxTotal += i.unitPricePaise * i.quantity);
 
-      // B2C Large enforcement: inter-state B2C over ₹2.5L must have state
-      if (!isB2B && isInterState) {
-        if (approxTotal > 25000000 && !customerStateCode) {
-          showToast('B2C Large (>₹2.5L): Customer State is MANDATORY', 'error');
+      if (!isB2B && approxTotal > 25000000) {
+        if (!customerName) {
+          showToast('B2C Large (>?2.5L): Customer Name is MANDATORY', 'error');
+          return;
+        }
+        if (!customerStateCode) {
+          showToast('B2C Large (>?2.5L): Customer State is MANDATORY', 'error');
           return;
         }
       }
 
-      // Loyalty Reminder: Warn if >= ₹1000, missing phone, and eligible (B2C Small)
       if (!isB2B && approxTotal >= 100000 && approxTotal <= 25000000 && !customerPhone) {
         const proceed = await new Promise(resolve => {
           document.getElementById('btn-loyalty-cancel').onclick = () => {
@@ -998,8 +988,8 @@ const BillingModule = (() => {
         }
       }
 
-      const result = await window.api.billing.checkout({
-        cartItems,
+      const checkoutResponse = await window.api.billing.checkout({
+        cartItems: cartItems,
         paymentMode: selectedPaymentMode,
         discountPaise,
         userId: currentUser ? currentUser.id : null,
@@ -1009,43 +999,59 @@ const BillingModule = (() => {
         customerGstin,
         customerStateCode,
         customerPhone,
-        customerAddress,
+        customerAddress: '',
         appliedCouponPaise,
         invoiceDate: document.getElementById('billing-invoice-date') ? document.getElementById('billing-invoice-date').value : null,
         sendWhatsappReceipt: document.getElementById('billing-send-whatsapp') ? document.getElementById('billing-send-whatsapp').checked : false,
-        customReceiptNumber: '' // Always auto-generate unique receipt number on backend
       });
+      
+      if (!checkoutResponse.success) {
+         throw new Error(checkoutResponse.error || 'Checkout failed');
+      }
+      
+      const results = checkoutResponse.results || [];
 
-      if (result.success) {
-        // Show confirmation modal
-        const confirmDiv = document.getElementById('checkout-confirm-content');
+      // Show confirmation modal
+      const confirmDiv = document.getElementById('checkout-confirm-content');
 
-        let rewardHtml = '';
-        if (result.rewardEarnedPaise > 0) {
-          rewardHtml = `
-            <div style="margin-top:16px; padding:12px; background:rgba(32, 201, 151, 0.1); border:1px dashed var(--accent-teal); border-radius:8px;">
-              <div style="font-size:24px; margin-bottom:4px;">🎉</div>
-              <div style="color:var(--accent-teal); font-weight:800; font-size:16px;">Reward Earned!</div>
-              <div style="font-size:14px;">Tell the customer they won <b>${formatRupees(result.rewardEarnedPaise)}</b> for their next visit!</div>
-            </div>
-          `;
-        }
-
-        confirmDiv.innerHTML = `
-          <div style="font-size:48px;margin-bottom:12px;">✅</div>
-          <div style="font-size:20px;font-weight:800;margin-bottom:8px;">Sale Complete!</div>
-          <div class="font-mono fw-700" style="font-size:16px;color:var(--accent-teal);margin-bottom:16px;">${result.receiptNumber}</div>
-          <div style="font-size:32px;font-weight:900;color:var(--accent-teal);">${formatRupees(result.grandTotalPaise)}</div>
-          <div class="text-muted text-sm mt-8">Payment: ${selectedPaymentMode.toUpperCase()}</div>
-          ${rewardHtml}
+      let rewardHtml = '';
+      const totalReward = results.reduce((sum, r) => sum + (r.rewardEarnedPaise || 0), 0);
+      if (totalReward > 0) {
+        rewardHtml = `
+          <div style="margin-top:16px; padding:12px; background:rgba(32, 201, 151, 0.1); border:1px dashed var(--accent-teal); border-radius:8px;">
+            <div style="font-size:24px; margin-bottom:4px;">??</div>
+            <div style="color:var(--accent-teal); font-weight:800; font-size:16px;">Reward Earned!</div>
+            <div style="font-size:14px;">Tell the customer they won <b>${formatRupees(totalReward)}</b> for their next visit!</div>
+          </div>
         `;
+      }
 
-        // Build receipt for printing
-        await buildReceipt(result, cartItems);
+      const receiptNumbers = results.map(r => r.receiptNumber).join(' <br> ');
+      const grandTotals = results.reduce((sum, r) => sum + (r.grandTotalPaise || 0), 0);
 
-        openModal('modal-checkout-confirm');
+      confirmDiv.innerHTML = `
+        <div style="font-size:48px;margin-bottom:12px;">&#x2705;</div>
+        <div style="font-size:20px;font-weight:800;margin-bottom:8px;">Sale Complete!</div>
+        <div class="font-mono fw-700" style="font-size:16px;color:var(--accent-teal);margin-bottom:16px;">${receiptNumbers}</div>
+        <div style="font-size:32px;font-weight:900;color:var(--accent-teal);">${formatRupees(grandTotals)}</div>
+        <div class="text-muted text-sm mt-8">Payment: ${selectedPaymentMode.toUpperCase()}</div>
+        ${rewardHtml}
+      `;
 
-        // Reset
+      // Build receipts for printing
+      document.getElementById('receipt-container').innerHTML = '';
+      document.getElementById('invoice-container').innerHTML = '';
+      for (let i = 0; i < results.length; i++) {
+         if (i > 0) {
+            document.getElementById('receipt-container').innerHTML += '<div style="margin: 16px 0; border-top: 1px dashed #000;"></div>';
+            document.getElementById('invoice-container').innerHTML += '<div style="page-break-after: always; margin: 20px 0; border-top: 1px dashed #000;"></div>';
+         }
+         await buildReceipt(results[i], results[i].cartItems);
+      }
+
+      openModal('modal-checkout-confirm');
+
+      // Reset
         cart = [];
         document.getElementById('billing-discount').value = '0';
         if (document.getElementById('billing-discount-percent')) {
@@ -1079,26 +1085,24 @@ const BillingModule = (() => {
         }
         updateCartUI();
 
-        // Fetch new receipt number for the next sale
-        if (typeof updateReceiptNumber !== 'undefined') {
-          await updateReceiptNumber();
-        } else {
-          if (invInput) {
-            const nextNum = await window.api.billing.getNextReceiptNumber(document.getElementById('billing-invoice-date') ? document.getElementById('billing-invoice-date').value : null);
-            invInput.value = nextNum;
-            isInvoiceNumberEdited = false;
-          }
-        }
-
-        showToast(`Sale ${result.receiptNumber} — ${formatRupees(result.grandTotalPaise)}`, 'success');
+      // Fetch new receipt number for the next sale
+      if (typeof updateReceiptNumber !== 'undefined') {
+        await updateReceiptNumber();
       } else {
-        showToast('Checkout failed: ' + (result.error || 'Unknown error'), 'error');
+        if (invInput) {
+          const nextNum = await window.api.billing.getNextReceiptNumber(document.getElementById('billing-invoice-date') ? document.getElementById('billing-invoice-date').value : null);
+          invInput.value = nextNum;
+          isInvoiceNumberEdited = false;
+        }
       }
+
+      const receiptNumbersStr = results.map(r => r.receiptNumber).join(' & ');
+      const grandTotalsSum = results.reduce((sum, r) => sum + (r.grandTotalPaise || 0), 0);
+      showToast(`Sale ${receiptNumbersStr} � ${formatRupees(grandTotalsSum)}`, 'success');
     } catch (err) {
       console.error('[Billing] checkout error:', err);
       showToast('Checkout error: ' + (err.message || 'Unknown error'), 'error');
     }
-
     scanner.focus();
   }
 
@@ -1160,7 +1164,7 @@ const BillingModule = (() => {
         ? `<th>IGST Rate</th><th>IGST Amt</th>`
         : `<th>GST Rate</th><th>CGST Amt</th><th>SGST Amt</th>`;
 
-      invoiceContainer.innerHTML = `
+      invoiceContainer.innerHTML += `
         <div class="invoice-title" style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px;">
           ${saleResult.isB2B ? 'TAX INVOICE' : 'RECEIPT'}
         </div>
@@ -1261,7 +1265,7 @@ const BillingModule = (() => {
         return html;
       }).join('');
 
-      receiptContainer.innerHTML = `
+      receiptContainer.innerHTML += `
         <div class="r-center r-bold" style="font-size:16px;">${storeName}</div>
         ${storePhone ? `<div class="r-center" style="font-size:10px;">Ph: ${storePhone}</div>` : ''}
         <div class="r-line"></div>

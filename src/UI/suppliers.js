@@ -384,23 +384,38 @@ const SuppliersModule = (() => {
         tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:15px;">No items found</td></tr>';
       } else {
         tbody.innerHTML = result.items.map(item => {
-          const hsnOrBatch = [item.hsn_code, item.batch_number].filter(Boolean).join('<br><span class="text-muted" style="font-size:10px;">Batch: ') + (item.batch_number ? '</span>' : '');
+          const mrp = item.mrp_paise || item.selling_price_paise || 0;
+          const taxable = item.taxable_amount_paise || (item.base_cost_paise * item.quantity);
+          const total = item.total_amount_paise || Math.max(0, taxable - (item.scheme_discount_paise || 0));
+          const amtWithTax = item.amount_with_tax_paise || item.line_total_paise || 0;
           
           return `
             <tr>
-              <td class="fw-700">
+              <td class="font-mono text-sm" style="padding: 4px;">${item.barcode || '—'}</td>
+              <td class="fw-700" style="padding: 4px;">
                 ${item.product_name}
                 ${item.category_name ? `<br><span class="text-muted" style="font-size:10px;">${item.category_name}</span>` : ''}
               </td>
-              <td class="font-mono text-sm">${hsnOrBatch || '—'}</td>
-              <td class="fw-700" style="text-align:right;">${item.quantity}</td>
-              <td class="text-muted" style="text-align:right;">${item.free_quantity || 0}</td>
-              <td class="text-sm" style="text-align:right;">${formatRupees(item.base_cost_paise || 0)}</td>
-              <td class="text-sm" style="text-align:right;">${formatRupees(item.scheme_discount_paise || 0)}</td>
-              <td class="fw-700" style="text-align:right; display:none;">${formatRupees(item.unit_cost_paise)}</td>
-              <td class="text-sm text-teal" style="text-align:right;">${formatRupees(item.selling_price_paise || 0)}</td>
-              <td class="text-sm" style="text-align:right;">${item.cgst_percent}% / ${item.sgst_percent}%</td>
-              <td class="fw-700 text-teal" style="text-align:right;">${formatRupees(item.line_total_paise)}</td>
+              <td class="font-mono text-sm" style="padding: 4px;">${item.hsn_code || '—'}</td>
+              <td class="font-mono text-sm" style="padding: 4px;">
+                ${item.expiry_date ? `${item.expiry_date}` : '—'}
+                ${item.batch_number ? `<br><span class="text-muted" style="font-size:10px;">Batch: ${item.batch_number}</span>` : ''}
+              </td>
+              <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(mrp)}</td>
+              <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(item.scheme_discount_paise || 0)}</td>
+              <td class="fw-700" style="text-align:right; padding: 4px;">${item.quantity}</td>
+              <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(item.base_cost_paise || 0)}</td>
+              <td class="text-muted" style="text-align:right; padding: 4px;">${item.free_quantity || 0}</td>
+              <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(taxable)}</td>
+              <td class="text-sm" style="text-align:right; padding: 4px;">
+                ${item.cgst_percent}%<br>
+                <span class="text-muted" style="font-size:10px;">${formatRupees(item.cgst_amount_paise || 0)}</span>
+              </td>
+              <td class="text-sm" style="text-align:right; padding: 4px;">
+                ${item.sgst_percent}%<br>
+                <span class="text-muted" style="font-size:10px;">${formatRupees(item.sgst_amount_paise || 0)}</span>
+              </td>
+              <td class="fw-700 text-teal" style="text-align:right; padding: 4px;">${formatRupees(amtWithTax)}</td>
             </tr>
           `;
         }).join('');
@@ -586,12 +601,18 @@ const SuppliersModule = (() => {
       const cgstInput = document.getElementById('pi-cgst');
       const sgstInput = document.getElementById('pi-sgst');
       
-      if (catName.includes('accessories')) {
-        hsnInput.value = '4201';
+      if (catName.includes('accessori') || catName.includes('toy') || catName.includes('groom')) {
+        window.hsnHelperContext = 'purchase';
+        document.getElementById('hsn-group-accessories').style.display = 'flex';
+        document.getElementById('hsn-group-medicine').style.display = 'none';
+        document.getElementById('modal-hsn-helper-title').innerHTML = '<i data-lucide="help-circle"></i> Select Accessory Type';
+        openModal('modal-hsn-helper');
       } else if (catName.includes('medicine')) {
-        hsnInput.value = '3004';
-      } else if (catName.includes('toy')) {
-        hsnInput.value = '9503';
+        window.hsnHelperContext = 'purchase';
+        document.getElementById('hsn-group-accessories').style.display = 'none';
+        document.getElementById('hsn-group-medicine').style.display = 'flex';
+        document.getElementById('modal-hsn-helper-title').innerHTML = '<i data-lucide="help-circle"></i> Select Medicine Type';
+        openModal('modal-hsn-helper');
       } else if (catName.includes('live pet')) {
         hsnInput.value = '0106';
         cgstInput.value = '0';
@@ -606,6 +627,117 @@ const SuppliersModule = (() => {
         cgstInput.value = '9';
         sgstInput.value = '9';
       }
+    }
+  });
+
+  function calculateBasePrice() {
+    const finalTotal = parseFloat(document.getElementById('pi-purchase-price').value) || 0;
+    const qty = parseInt(document.getElementById('pi-qty').value) || 1;
+    let schemeDisc = 0;
+    const schemeDiscRaw = document.getElementById('pi-scheme-disc').value.trim();
+    if (schemeDiscRaw.endsWith('%')) {
+      showToast('Cannot reverse-calculate base price when scheme discount is a percentage. Please use an absolute amount.', 'warning');
+      return;
+    } else {
+      schemeDisc = parseFloat(schemeDiscRaw) || 0;
+    }
+    const cgst = parseFloat(document.getElementById('pi-cgst').value) || 0;
+    const sgst = parseFloat(document.getElementById('pi-sgst').value) || 0;
+    const gstPercent = cgst + sgst;
+
+    if (finalTotal <= 0) {
+      showToast('Please enter the Final Purchase amount first.', 'warning');
+      return;
+    }
+
+    // Amount before GST
+    const amountBeforeGst = finalTotal / (1 + (gstPercent / 100));
+    // ADD scheme discount to get the total base amount
+    const totalBaseAmount = amountBeforeGst + schemeDisc;
+    // Per-unit base price
+    const basePrice = totalBaseAmount / qty;
+
+    document.getElementById('pi-base-price').value = basePrice.toFixed(2);
+    showToast('Base price calculated automatically.', 'success');
+  }
+  window.calculateBasePrice = calculateBasePrice;
+
+  // Synchronize Base, Taxable, and Total amounts
+  function getMathValues() {
+    return {
+      qty: parseInt(document.getElementById('pi-qty').value) || 1,
+      disc: parseFloat(document.getElementById('pi-scheme-disc').value) || 0,
+      cgst: parseFloat(document.getElementById('pi-cgst').value) || 0,
+      sgst: parseFloat(document.getElementById('pi-sgst').value) || 0
+    };
+  }
+
+  let activeMathAnchor = 'total'; // default
+
+  function triggerMathUpdate() {
+    const v = getMathValues();
+    const gstPercent = v.cgst + v.sgst;
+
+    if (activeMathAnchor === 'total') {
+      const total = parseFloat(document.getElementById('pi-purchase-price').value) || 0;
+      const taxable = total / (1 + (gstPercent / 100));
+      const basePrice = (taxable + v.disc) / v.qty;
+      document.getElementById('pi-taxable-amount').value = Math.max(0, taxable).toFixed(2);
+      document.getElementById('pi-base-price').value = Math.max(0, basePrice).toFixed(2);
+    } else if (activeMathAnchor === 'taxable') {
+      const taxable = parseFloat(document.getElementById('pi-taxable-amount').value) || 0;
+      const basePrice = (taxable + v.disc) / v.qty;
+      const total = taxable * (1 + (gstPercent / 100));
+      document.getElementById('pi-base-price').value = Math.max(0, basePrice).toFixed(2);
+      document.getElementById('pi-purchase-price').value = Math.max(0, total).toFixed(2);
+    } else if (activeMathAnchor === 'base') {
+      const basePrice = parseFloat(document.getElementById('pi-base-price').value) || 0;
+      const taxable = (basePrice * v.qty) - v.disc;
+      const total = taxable * (1 + (gstPercent / 100));
+      document.getElementById('pi-taxable-amount').value = Math.max(0, taxable).toFixed(2);
+      document.getElementById('pi-purchase-price').value = Math.max(0, total).toFixed(2);
+    }
+  }
+
+  document.getElementById('pi-base-price').addEventListener('input', (e) => {
+    activeMathAnchor = 'base';
+    const basePrice = parseFloat(e.target.value);
+    if (!isNaN(basePrice)) {
+      const v = getMathValues();
+      const taxable = (basePrice * v.qty) - v.disc;
+      const total = taxable * (1 + ((v.cgst + v.sgst) / 100));
+      document.getElementById('pi-taxable-amount').value = Math.max(0, taxable).toFixed(2);
+      document.getElementById('pi-purchase-price').value = Math.max(0, total).toFixed(2);
+    }
+  });
+
+  document.getElementById('pi-qty').addEventListener('input', triggerMathUpdate);
+  document.getElementById('pi-scheme-disc').addEventListener('input', triggerMathUpdate);
+  document.getElementById('pi-cgst').addEventListener('input', triggerMathUpdate);
+  document.getElementById('pi-sgst').addEventListener('input', triggerMathUpdate);
+
+  document.getElementById('pi-taxable-amount').addEventListener('input', (e) => {
+    activeMathAnchor = 'taxable';
+    const taxable = parseFloat(e.target.value);
+    if (!isNaN(taxable)) {
+      const v = getMathValues();
+      const basePrice = (taxable + v.disc) / v.qty;
+      const total = taxable * (1 + ((v.cgst + v.sgst) / 100));
+      document.getElementById('pi-base-price').value = Math.max(0, basePrice).toFixed(2);
+      document.getElementById('pi-purchase-price').value = Math.max(0, total).toFixed(2);
+    }
+  });
+
+  document.getElementById('pi-purchase-price').addEventListener('input', (e) => {
+    activeMathAnchor = 'total';
+    const total = parseFloat(e.target.value);
+    if (!isNaN(total)) {
+      const v = getMathValues();
+      const gstPercent = v.cgst + v.sgst;
+      const taxable = total / (1 + (gstPercent / 100));
+      const basePrice = (taxable + v.disc) / v.qty;
+      document.getElementById('pi-taxable-amount').value = Math.max(0, taxable).toFixed(2);
+      document.getElementById('pi-base-price').value = Math.max(0, basePrice).toFixed(2);
     }
   });
 
@@ -735,33 +867,44 @@ const SuppliersModule = (() => {
       
       totalItems += item.quantity;
 
+      let taxableVal = baseVal * item.quantity;
+      let cgstVal = taxableVal * (item.cgstPercent / 100);
+      let sgstVal = taxableVal * (item.sgstPercent / 100);
+
       return `<tr>
-        <td class="font-mono text-sm">${item.barcode}</td>
-        <td class="fw-700">${item.productName}</td>
-        <td class="text-sm">${item.hsnCode || '—'}
+        <td class="font-mono text-sm" style="padding: 4px;">${item.barcode}</td>
+        <td class="fw-700" style="padding: 4px;">${item.productName}</td>
+        <td class="font-mono text-sm" style="padding: 4px;">${item.hsnCode || '—'}</td>
+        <td class="font-mono text-sm" style="padding: 4px;">
+          ${item.expiryDate ? `${item.expiryDate}` : '—'}
           ${item.batchNumber ? `<br><span class="text-muted" style="font-size:10px;">Batch: ${item.batchNumber}</span>` : ''}
-          ${item.expiryDate ? `<br><span class="text-muted" style="font-size:10px;">Exp: ${item.expiryDate}</span>` : ''}
         </td>
-        <td class="fw-700">
-          <input type="number" min="1" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.quantity}" onchange="updatePurchaseItemField(${idx}, 'quantity', this.value)">
+        <td class="text-sm" style="text-align:right; padding: 4px;">₹${((item.sellingPricePaise || 0) / 100).toFixed(2)}</td>
+        <td class="text-sm" style="text-align:right; padding: 4px;">
+          ₹<input type="number" min="0" step="0.01" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent-amber);" value="${((item.schemeDiscountPaise || 0) / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'schemeDiscountPaise', this.value)">
         </td>
-        <td class="text-sm text-muted">
-          <input type="number" min="0" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.freeQuantity || 0}" onchange="updatePurchaseItemField(${idx}, 'freeQuantity', this.value)">
+        <td class="fw-700" style="text-align:right; padding: 4px;">
+          <input type="number" min="1" style="width: 40px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.quantity}" onchange="updatePurchaseItemField(${idx}, 'quantity', this.value)">
         </td>
-        <td class="text-sm">
-          ₹<input type="number" min="0" step="0.01" style="width: 70px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(baseVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
+        <td class="text-sm" style="text-align:right; padding: 4px;">
+          ₹<input type="number" min="0" step="0.01" style="width: 60px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(baseVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
         </td>
-        <td class="text-sm">
-          ₹<input type="number" min="0" step="0.01" style="width: 60px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent-amber);" value="${((item.schemeDiscountPaise || 0) / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'schemeDiscountPaise', this.value)">
+        <td class="text-sm text-muted" style="text-align:right; padding: 4px;">
+          <input type="number" min="0" style="width: 40px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.freeQuantity || 0}" onchange="updatePurchaseItemField(${idx}, 'freeQuantity', this.value)">
         </td>
-        <td class="text-sm">
-          <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.cgstPercent}" onchange="updatePurchaseItemField(${idx}, 'cgstPercent', this.value)">% / 
+        <td class="text-sm" style="text-align:right; padding: 4px;">₹${(taxableVal / 100).toFixed(2)}</td>
+        <td class="text-sm" style="text-align:right; padding: 4px;">
+          <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.cgstPercent}" onchange="updatePurchaseItemField(${idx}, 'cgstPercent', this.value)">%
+          <br><span class="text-muted" style="font-size:10px;">₹${(cgstVal / 100).toFixed(2)}</span>
+        </td>
+        <td class="text-sm" style="text-align:right; padding: 4px;">
           <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.sgstPercent}" onchange="updatePurchaseItemField(${idx}, 'sgstPercent', this.value)">%
+          <br><span class="text-muted" style="font-size:10px;">₹${(sgstVal / 100).toFixed(2)}</span>
         </td>
-        <td class="fw-700 text-teal">
-          ₹<input type="number" min="0" step="0.01" style="width: 80px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: bold; color: var(--accent-teal);" value="${(totalVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'explicitLineTotalPaise', this.value)">
+        <td class="fw-700 text-teal" style="text-align:right; padding: 4px;">
+          ₹<input type="number" min="0" step="0.01" style="width: 70px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: bold; color: var(--accent-teal);" value="${(totalVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'explicitLineTotalPaise', this.value)">
         </td>
-        <td><button type="button" class="btn btn-ghost btn-sm" onclick="removePurchaseItem(${idx})" style="padding:4px;color:var(--accent-rose);">✕</button></td>
+        <td style="padding: 4px;"><button type="button" class="btn btn-ghost btn-sm" onclick="removePurchaseItem(${idx})" style="padding:4px;color:var(--accent-rose);">✕</button></td>
       </tr>`;
     }).join('');
 
@@ -772,8 +915,9 @@ const SuppliersModule = (() => {
     let sumOfItemTotalsPaise = 0;
     let sumOfSchemeDiscountPaise = 0;
     pendingPurchaseItems.forEach(item => {
-      let val = item.explicitLineTotalPaise !== undefined ? item.explicitLineTotalPaise : (item.basePricePaise || 0);
-      sumOfItemTotalsPaise += val;
+      let baseVal = item.basePricePaise || 0;
+      let taxableVal = (baseVal * item.quantity) - (item.schemeDiscountPaise || 0);
+      sumOfItemTotalsPaise += Math.max(0, taxableVal);
       sumOfSchemeDiscountPaise += (item.schemeDiscountPaise || 0);
     });
 

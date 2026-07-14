@@ -1062,63 +1062,59 @@ ipcMain.handle('billing:get-next-receipt-number', async (_e, dateStr) => {
   }
 });
 
-ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discountPaise, userId, customerName, customerGstin, isB2B, isInterState, customerStateCode, customerPhone, customerAddress, appliedCouponPaise, invoiceDate, sendWhatsappReceipt: shouldSendWhatsappReceipt, customReceiptNumber }) => {
+ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discountPaise, userId, customerName, customerGstin, isB2B, isInterState, customerStateCode, customerPhone, customerAddress, appliedCouponPaise, invoiceDate, sendWhatsappReceipt: shouldSendWhatsappReceipt }) => {
   try {
     const checkoutTransaction = db.transaction((items) => {
-      let subtotalPaise = 0;
-      let totalCgstPaise = 0;
-      let totalSgstPaise = 0;
-      let totalIgstPaise = 0;
-
-      // Validate stock
+      // 1. Initial Stock Validation
       for (const item of items) {
         const freeQuantity = parseInt(item.freeQuantity) || 0;
         const totalQuantityToDeduct = item.quantity + freeQuantity;
-
         const product = db.prepare("SELECT p.stock_quantity, p.barcode, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ? AND p.is_active = 1").get(item.productId);
         if (!product) throw new Error(`Product ${item.productName} not found`);
-        
-        const isService = (product.category_name || '').toLowerCase().includes('service') || (product.barcode || '').startsWith('SRV-');
-        item._isService = isService; // Stash for later
-
+        const isService = (product.category_name || '').toLowerCase().includes('service') || (product.category_name || '').toLowerCase().includes('grooming') || (product.barcode || '').startsWith('SRV-');
+        item._isService = isService;
         if (!isService && product.stock_quantity < totalQuantityToDeduct) {
           throw new Error(`Insufficient stock for ${item.productName} (available: ${product.stock_quantity})`);
         }
       }
 
-      // Calculate totals
+      // 2. Global Totals (to calculate Loyalty)
+      let globalSubtotal = 0;
+      let globalCgst = 0;
+      let globalSgst = 0;
+      let globalIgst = 0;
+      let globalItemTotal = 0;
+      
       for (const item of items) {
         const itemDiscount = parseInt(item.discountPaise) || 0;
         const lineTotal = Math.max(0, (item.unitPricePaise * item.quantity) - itemDiscount);
+        globalItemTotal += (item.unitPricePaise * item.quantity);
 
         if (item.gstPercent > 0) {
           const taxableValue = Math.round((lineTotal * 100) / (100 + item.gstPercent));
           const gstAmount = lineTotal - taxableValue;
-
-          subtotalPaise += taxableValue;
-
+          globalSubtotal += taxableValue;
           if (isInterState) {
-            totalIgstPaise += gstAmount;
+            globalIgst += gstAmount;
           } else {
             const halfGst = Math.round(gstAmount / 2);
-            totalCgstPaise += halfGst;
-            totalSgstPaise += (gstAmount - halfGst);
+            globalCgst += halfGst;
+            globalSgst += (gstAmount - halfGst);
           }
         } else {
-          subtotalPaise += lineTotal;
+          globalSubtotal += lineTotal;
         }
       }
 
-      const discount = discountPaise || 0;
-      let grandTotalPaise = subtotalPaise + totalCgstPaise + totalSgstPaise + totalIgstPaise - discount;
+      const globalDiscount = discountPaise || 0;
+      let globalGrandTotal = globalSubtotal + globalCgst + globalSgst + globalIgst - globalDiscount;
 
-      // --- NEW LOYALTY LOGIC ---
+      // 3. Loyalty Logic on Global Grand Total
       let customerId = null;
       let rewardEarnedPaise = 0;
       let newCouponBalancePaise = 0;
       let actualAppliedCoupon = 0;
-
-      const isB2CSmall = !isB2B && (grandTotalPaise <= 25000000);
+      const isB2CSmall = !isB2B && (globalGrandTotal <= 25000000);
 
       if (customerPhone && isB2CSmall) {
         let cust = db.prepare("SELECT * FROM customers WHERE phone_number = ?").get(customerPhone);
@@ -1128,34 +1124,56 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
           cust = { id: customerId, coupon_balance_paise: 0, total_lifetime_spent_paise: 0 };
         } else {
           customerId = cust.id;
-          // Update name if they were anonymous before
           if (customerName && cust.name === '') {
             db.prepare("UPDATE customers SET name = ? WHERE id = ?").run(customerName, customerId);
           }
         }
-
         if (appliedCouponPaise > 0) {
-          actualAppliedCoupon = Math.min(appliedCouponPaise, cust.coupon_balance_paise, grandTotalPaise);
-          grandTotalPaise -= actualAppliedCoupon;
+          actualAppliedCoupon = Math.min(appliedCouponPaise, cust.coupon_balance_paise, globalGrandTotal);
+          globalGrandTotal -= actualAppliedCoupon;
         }
-
-        if (grandTotalPaise >= 100000) { // 1000 rupees
-          // Reward is 1% of the grand total
-          rewardEarnedPaise = Math.floor(grandTotalPaise * 0.01);
+        if (globalGrandTotal >= 100000) { // 1000 rupees
+          rewardEarnedPaise = Math.floor(globalGrandTotal * 0.01);
         }
-
-        // Bug fix #6: Use MAX(0, ...) to prevent coupon balance from going negative
         db.prepare(
           "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = total_lifetime_spent_paise + ?, updated_at = datetime('now','localtime') WHERE id = ?"
-        ).run(actualAppliedCoupon, rewardEarnedPaise, grandTotalPaise, customerId);
-
+        ).run(actualAppliedCoupon, rewardEarnedPaise, globalGrandTotal, customerId);
         newCouponBalancePaise = cust.coupon_balance_paise - actualAppliedCoupon + rewardEarnedPaise;
+      } else {
+        if (appliedCouponPaise > 0) {
+           actualAppliedCoupon = Math.min(appliedCouponPaise, globalGrandTotal);
+           globalGrandTotal -= actualAppliedCoupon;
+        }
       }
-      // -------------------------
 
-      // Generate receipt number
-      const receiptNumber = customReceiptNumber || generateReceiptNumber(db, invoiceDate);
+      // 4. Split Carts
+      const productCart = items.filter(i => !i._isService);
+      const serviceCart = items.filter(i => i._isService);
+      
+      const cartsToProcess = [];
+      if (productCart.length > 0) {
+        let pTotal = 0;
+        productCart.forEach(item => { pTotal += (item.unitPricePaise * item.quantity); });
+        const pDiscount = Math.round((pTotal / globalItemTotal) * globalDiscount) || 0;
+        const pCoupon = Math.round((pTotal / globalItemTotal) * actualAppliedCoupon) || 0;
+        cartsToProcess.push({ items: productCart, discount: pDiscount, coupon: pCoupon, customReceiptNumber: null, isServiceCart: false });
+      }
 
+      if (serviceCart.length > 0) {
+        let sTotal = 0;
+        serviceCart.forEach(item => { sTotal += (item.unitPricePaise * item.quantity); });
+        let finalSDiscount = Math.round((sTotal / globalItemTotal) * globalDiscount) || 0;
+        let finalSCoupon = Math.round((sTotal / globalItemTotal) * actualAppliedCoupon) || 0;
+        
+        if (productCart.length > 0) {
+           finalSDiscount = globalDiscount - cartsToProcess[0].discount;
+           finalSCoupon = actualAppliedCoupon - cartsToProcess[0].coupon;
+        }
+        cartsToProcess.push({ items: serviceCart, discount: finalSDiscount, coupon: finalSCoupon, customReceiptNumber: `SRV-${Date.now()}`, isServiceCart: true });
+      }
+
+      // 5. Process Each Cart
+      const results = [];
       let createdAtStr = null;
       if (invoiceDate) {
         const now = new Date();
@@ -1174,144 +1192,151 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
         createdAtStr = `${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}`;
       }
 
-      // Insert sale
-      const { lastInsertRowid: saleId } = db.prepare(
-        `INSERT INTO sales (receipt_number, user_id, customer_name, customer_gstin, is_b2b, subtotal_paise, discount_paise,
-          cgst_paise, sgst_paise, igst_paise, is_inter_state, customer_state_code, grand_total_paise, payment_mode, customer_phone, customer_address, applied_coupon_paise, reward_earned_paise, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        receiptNumber, userId || null, customerName || '', customerGstin || '', isB2B ? 1 : 0, subtotalPaise, discount,
-        totalCgstPaise, totalSgstPaise, totalIgstPaise, isInterState ? 1 : 0, customerStateCode || '', grandTotalPaise, paymentMode || 'cash',
-        customerPhone || '', customerAddress || '', actualAppliedCoupon, rewardEarnedPaise, createdAtStr
-      );
+      for (const cart of cartsToProcess) {
+        let subtotalPaise = 0;
+        let totalCgstPaise = 0;
+        let totalSgstPaise = 0;
+        let totalIgstPaise = 0;
 
-      // Insert sale items and deduct stock
-      for (const item of items) {
-        const freeQuantity = parseInt(item.freeQuantity) || 0;
-        const totalQuantityToDeduct = item.quantity + freeQuantity;
+        for (const item of cart.items) {
+          const itemDiscount = parseInt(item.discountPaise) || 0;
+          const lineTotal = Math.max(0, (item.unitPricePaise * item.quantity) - itemDiscount);
 
-        if (!item._isService) {
-          // Deduct inventory
-          db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
-            totalQuantityToDeduct, item.productId
-          );
-
-          // Log adjustment
-          db.prepare(
-            "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'sale', ?, ?, ?)"
-          ).run(
-            item.productId, totalQuantityToDeduct, `Sale ${receiptNumber}`, userId || null
-          );
-        }
-
-        let remainingQuantityToDeduct = totalQuantityToDeduct;
-
-        // Fetch batches ordered by expiry (oldest expiring first), then creation date
-        const batches = db.prepare(`
-          SELECT * FROM product_batches 
-          WHERE product_id = ? AND quantity > 0 
-          ORDER BY 
-            CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
-            created_at ASC
-        `).all(item.productId);
-
-        let batchIndex = 0;
-
-        while (remainingQuantityToDeduct > 0) {
-          let batchId = null;
-          let batchPurchasePrice = 0; // Fallback to 0 if no batches
-          let qtyToDeductFromBatch = remainingQuantityToDeduct;
-
-          if (batchIndex < batches.length) {
-            const batch = batches[batchIndex];
-            batchId = batch.id;
-            batchPurchasePrice = batch.purchase_price_paise;
-
-            if (batch.quantity >= remainingQuantityToDeduct) {
-              // This batch can fulfill the remaining amount
-              db.prepare("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?").run(remainingQuantityToDeduct, batch.id);
-              qtyToDeductFromBatch = remainingQuantityToDeduct;
-              remainingQuantityToDeduct = 0;
+          if (item.gstPercent > 0) {
+            const taxableValue = Math.round((lineTotal * 100) / (100 + item.gstPercent));
+            const gstAmount = lineTotal - taxableValue;
+            subtotalPaise += taxableValue;
+            if (isInterState) {
+              totalIgstPaise += gstAmount;
             } else {
-              // This batch can only partially fulfill
-              qtyToDeductFromBatch = batch.quantity;
-              db.prepare("UPDATE product_batches SET quantity = 0 WHERE id = ?").run(batch.id);
-              remainingQuantityToDeduct -= qtyToDeductFromBatch;
-              batchIndex++;
+              const halfGst = Math.round(gstAmount / 2);
+              totalCgstPaise += halfGst;
+              totalSgstPaise += (gstAmount - halfGst);
             }
           } else {
-            // We ran out of batches before fulfilling the quantity!
-            // We will fallback to the product's default purchase price
-            const prod = db.prepare("SELECT purchase_price_paise FROM products WHERE id = ?").get(item.productId);
-            batchPurchasePrice = prod ? prod.purchase_price_paise : 0;
-            qtyToDeductFromBatch = remainingQuantityToDeduct;
-            remainingQuantityToDeduct = 0;
+            subtotalPaise += lineTotal;
+          }
+        }
+
+        const grandTotalPaise = subtotalPaise + totalCgstPaise + totalSgstPaise + totalIgstPaise - cart.discount - cart.coupon;
+        const receiptNumber = cart.customReceiptNumber || generateReceiptNumber(db, invoiceDate);
+        
+        // Only report the reward earned on the primary cart (e.g. the first one) to not duplicate on UI
+        const isFirstCart = results.length === 0;
+        const reportedReward = isFirstCart ? rewardEarnedPaise : 0;
+        const reportedNewBalance = isFirstCart ? newCouponBalancePaise : 0;
+
+        const { lastInsertRowid: saleId } = db.prepare(
+          `INSERT INTO sales (receipt_number, user_id, customer_name, customer_gstin, is_b2b, subtotal_paise, discount_paise,
+            cgst_paise, sgst_paise, igst_paise, is_inter_state, customer_state_code, grand_total_paise, payment_mode, customer_phone, customer_address, applied_coupon_paise, reward_earned_paise, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          receiptNumber, userId || null, customerName || '', customerGstin || '', isB2B ? 1 : 0, subtotalPaise, cart.discount,
+          totalCgstPaise, totalSgstPaise, totalIgstPaise, isInterState ? 1 : 0, customerStateCode || '', grandTotalPaise, paymentMode || 'cash',
+          customerPhone || '', customerAddress || '', cart.coupon, reportedReward, createdAtStr
+        );
+
+        for (const item of cart.items) {
+          const freeQuantity = parseInt(item.freeQuantity) || 0;
+          const totalQuantityToDeduct = item.quantity + freeQuantity;
+
+          if (!item._isService) {
+            db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
+              totalQuantityToDeduct, item.productId
+            );
+            db.prepare(
+              "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason, user_id) VALUES (?, 'sale', ?, ?, ?)"
+            ).run(
+              item.productId, totalQuantityToDeduct, `Sale ${receiptNumber}`, userId || null
+            );
           }
 
-          // We only charge the billed quantity for the line total, not the free ones!
-          // However, since we split across batches, we calculate proportional line total for the billed part.
-          // The discount_paise is a total discount applied to this item line.
-          const discount = parseInt(item.discountPaise) || 0;
+          let remainingQuantityToDeduct = totalQuantityToDeduct;
+          const batches = db.prepare(`
+            SELECT * FROM product_batches 
+            WHERE product_id = ? AND quantity > 0 
+            ORDER BY 
+              CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
+              created_at ASC
+          `).all(item.productId);
 
-          // To keep it simple, we attribute the total line discount and free qty to the first batch record, 
-          // or proportionally. Actually, let's just insert it.
-          // Wait, if it splits into multiple sale_item rows due to batches, we should only apply discount/free_quantity to the first one to avoid duplicating the discount.
-          const isFirstBatch = (qtyToDeductFromBatch === totalQuantityToDeduct) || (remainingQuantityToDeduct === (totalQuantityToDeduct - qtyToDeductFromBatch));
-          const appliedDiscount = isFirstBatch ? discount : 0;
-          const appliedFreeQty = isFirstBatch ? freeQuantity : 0;
+          let batchIndex = 0;
+          while (remainingQuantityToDeduct > 0) {
+            let batchId = null;
+            let batchPurchasePrice = 0;
+            let qtyToDeductFromBatch = remainingQuantityToDeduct;
 
-          // Billed quantity for this batch (subtract free qty from first batch if possible, or distribute).
-          // A simpler approach: we just store the total quantity in the single item record if we didn't have batches, but since we do...
-          // Let's just insert one `sale_items` row per batch.
-          // The billed quantity is just qtyToDeductFromBatch, but we must make sure we don't overbill if some are free.
-          // If totalQuantityToDeduct = 12 (10 billed + 2 free).
-          // Batch 1 has 5, Batch 2 has 7.
-          // We can just calculate the proportional billed amount.
-          // Actually, we can just save it to sale_items.
+            if (batchIndex < batches.length) {
+              const batch = batches[batchIndex];
+              batchId = batch.id;
+              batchPurchasePrice = batch.purchase_price_paise;
 
-          const billedQtyForBatch = Math.max(0, qtyToDeductFromBatch - appliedFreeQty); // simplified
-          const lineTotalPart = billedQtyForBatch * item.unitPricePaise;
+              if (batch.quantity >= remainingQuantityToDeduct) {
+                db.prepare("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?").run(remainingQuantityToDeduct, batch.id);
+                qtyToDeductFromBatch = remainingQuantityToDeduct;
+                remainingQuantityToDeduct = 0;
+              } else {
+                qtyToDeductFromBatch = batch.quantity;
+                db.prepare("UPDATE product_batches SET quantity = 0 WHERE id = ?").run(batch.id);
+                remainingQuantityToDeduct -= qtyToDeductFromBatch;
+                batchIndex++;
+              }
+            } else {
+              const prod = db.prepare("SELECT purchase_price_paise FROM products WHERE id = ?").get(item.productId);
+              batchPurchasePrice = prod ? prod.purchase_price_paise : 0;
+              qtyToDeductFromBatch = remainingQuantityToDeduct;
+              remainingQuantityToDeduct = 0;
+            }
 
-          db.prepare(
-            `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, free_quantity, unit_price_paise, purchase_price_paise, discount_paise, gst_percent, hsn_code, line_total_paise, batch_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(
-            saleId, item.productId, item.productName, item.barcode, billedQtyForBatch, appliedFreeQty,
-            item.unitPricePaise, batchPurchasePrice, appliedDiscount, item.gstPercent || 0, item.hsnCode || '', lineTotalPart - appliedDiscount, batchId
-          );
+            const discount = parseInt(item.discountPaise) || 0;
+            const isFirstBatch = (qtyToDeductFromBatch === totalQuantityToDeduct) || (remainingQuantityToDeduct === (totalQuantityToDeduct - qtyToDeductFromBatch));
+            const appliedDiscount = isFirstBatch ? discount : 0;
+            const appliedFreeQty = isFirstBatch ? freeQuantity : 0;
+
+            const billedQtyForBatch = Math.max(0, qtyToDeductFromBatch - appliedFreeQty);
+            const lineTotalPart = billedQtyForBatch * item.unitPricePaise;
+
+            db.prepare(
+              `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, free_quantity, unit_price_paise, purchase_price_paise, discount_paise, gst_percent, hsn_code, line_total_paise, batch_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            ).run(
+              saleId, item.productId, item.productName, item.barcode, billedQtyForBatch, appliedFreeQty,
+              item.unitPricePaise, batchPurchasePrice, appliedDiscount, item.gstPercent || 0, item.hsnCode || '', lineTotalPart - appliedDiscount, batchId
+            );
+          }
         }
+        
+        results.push({
+          receiptNumber,
+          saleId,
+          subtotalPaise,
+          cgstPaise: totalCgstPaise,
+          sgstPaise: totalSgstPaise,
+          igstPaise: totalIgstPaise,
+          discountPaise: cart.discount,
+          appliedCouponPaise: cart.coupon,
+          rewardEarnedPaise: reportedReward,
+          newCouponBalancePaise: reportedNewBalance,
+          grandTotalPaise,
+          customerName,
+          customerGstin,
+          customerPhone: customerPhone || '',
+          isB2B,
+          isInterState,
+          createdAt: createdAtStr,
+          cartItems: cart.items
+        });
       }
 
-      console.log(`[TX] Sale ${receiptNumber} — ₹${(grandTotalPaise / 100).toFixed(2)}`);
-
-      return {
-        success: true,
-        receiptNumber,
-        saleId,
-        subtotalPaise,
-        cgstPaise: totalCgstPaise,
-        sgstPaise: totalSgstPaise,
-        igstPaise: totalIgstPaise,
-        discountPaise: discount,
-        appliedCouponPaise: actualAppliedCoupon,
-        rewardEarnedPaise,
-        newCouponBalancePaise,
-        grandTotalPaise,
-        customerName,
-        customerGstin,
-        customerPhone: customerPhone || '',
-        isB2B,
-        isInterState,
-        createdAt: createdAtStr
-      };
+      return { success: true, results };
     });
 
-    // Execute the transaction
     const result = checkoutTransaction(cartItems);
 
-    // If checkout was successful and we want to send a WhatsApp receipt
     if (result.success && customerPhone && shouldSendWhatsappReceipt) {
-      sendWhatsAppReceipt(customerPhone, customerName, result.grandTotalPaise, result.receiptNumber).catch(e => console.error("WhatsApp Async Error:", e));
+      for (const res of result.results) {
+         sendWhatsAppReceipt(customerPhone, customerName, res.grandTotalPaise, res.receiptNumber).catch(e => console.error("WhatsApp Async Error:", e));
+      }
     }
 
     return result;
@@ -1362,7 +1387,7 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
       const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(id);
       for (const item of saleItems) {
         const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(item.product_id);
-        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (item.barcode || '').startsWith('SRV-'));
+        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (product.category_name || '').toLowerCase().includes('grooming') || (item.barcode || '').startsWith('SRV-'));
 
         if (!isService) {
           const freeQty = item.free_quantity || 0;
@@ -1584,7 +1609,7 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
         );
 
         const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(originalItem.product_id);
-        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (originalItem.barcode || '').startsWith('SRV-'));
+        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (product.category_name || '').toLowerCase().includes('grooming') || (originalItem.barcode || '').startsWith('SRV-'));
 
         if (!isService && totalQuantityToRestore > 0) {
           db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, originalItem.product_id);
@@ -2084,6 +2109,37 @@ ipcMain.handle('reports:sales', async (_e, { startDate, endDate, paymentMode }) 
       params.push(paymentMode);
     }
 
+    salesQuery += ` ORDER BY s.created_at DESC`;
+
+    const sales = queryAll(salesQuery, params);
+    const summary = queryOne(summaryQuery, params);
+
+    return { sales, summary };
+  } catch (err) {
+    return { sales: [], summary: null };
+  }
+});
+
+ipcMain.handle('reports:services', async (_e, { startDate, endDate }) => {
+  try {
+    let salesQuery = `SELECT s.*, u.display_name as cashier_name,
+        (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) as item_count
+       FROM sales s
+       LEFT JOIN users u ON s.user_id = u.id
+       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
+       AND s.receipt_number LIKE 'SRV-%'`;
+
+    let summaryQuery = `SELECT COUNT(*) as total_sales,
+        COALESCE(SUM(subtotal_paise), 0) as total_subtotal,
+        COALESCE(SUM(discount_paise), 0) as total_discount,
+        COALESCE(SUM(cgst_paise), 0) as total_cgst,
+        COALESCE(SUM(sgst_paise), 0) as total_sgst,
+        COALESCE(SUM(igst_paise), 0) as total_igst,
+        COALESCE(SUM(grand_total_paise), 0) as total_grand
+       FROM sales WHERE date(created_at) >= ? AND date(created_at) <= ?
+       AND receipt_number LIKE 'SRV-%'`;
+
+    const params = [startDate, endDate];
     salesQuery += ` ORDER BY s.created_at DESC`;
 
     const sales = queryAll(salesQuery, params);

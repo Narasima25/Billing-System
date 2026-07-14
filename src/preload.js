@@ -111,6 +111,7 @@ contextBridge.exposeInMainWorld('api', {
   // ─── Reports ─────────────────────────────────────────────────────────
   reports: {
     sales: (params) => ipcRenderer.invoke('reports:sales', params),
+    services: (params) => ipcRenderer.invoke('reports:services', params),
     inventory: (params) => ipcRenderer.invoke('reports:inventory', params),
     purchases: (params) => ipcRenderer.invoke('reports:purchases', params),
     profit: (params) => ipcRenderer.invoke('reports:profit', params),

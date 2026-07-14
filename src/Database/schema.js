@@ -518,6 +518,16 @@ function initializeSchema(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone_number);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);`);
 
+  // ─── Phase 8: Extended Purchase Item Columns ──────────────────────────
+  try { db.exec(`ALTER TABLE purchase_items ADD COLUMN mrp_paise INTEGER DEFAULT 0;`); } catch(e) {}
+  try { db.exec(`ALTER TABLE purchase_items ADD COLUMN hsn_code TEXT DEFAULT '';`); } catch(e) {}
+  try { db.exec(`ALTER TABLE purchase_items ADD COLUMN expiry_date TEXT DEFAULT '';`); } catch(e) {}
+  try { db.exec(`ALTER TABLE purchase_items ADD COLUMN taxable_amount_paise INTEGER DEFAULT 0;`); } catch(e) {}
+  try { db.exec(`ALTER TABLE purchase_items ADD COLUMN total_amount_paise INTEGER DEFAULT 0;`); } catch(e) {}
+  try { db.exec(`ALTER TABLE purchase_items ADD COLUMN cgst_amount_paise INTEGER DEFAULT 0;`); } catch(e) {}
+  try { db.exec(`ALTER TABLE purchase_items ADD COLUMN sgst_amount_paise INTEGER DEFAULT 0;`); } catch(e) {}
+  try { db.exec(`ALTER TABLE purchase_items ADD COLUMN amount_with_tax_paise INTEGER DEFAULT 0;`); } catch(e) {}
+
   // ─── Seed: Default Admin User ────────────────────────────────────────
   const adminCheck = db.prepare("SELECT COUNT(*) as cnt FROM users WHERE username = 'admin'").get();
   const adminExists = adminCheck && adminCheck.cnt > 0;
