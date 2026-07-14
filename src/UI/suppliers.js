@@ -687,32 +687,34 @@ const SuppliersModule = (() => {
       total = inputValue;
       taxable = total / (1 + (gstPercent / 100));
       if (isPercent) {
-         let factor = 1 - (discVal / 100);
-         if (factor <= 0) factor = 0.001;
-         basePrice = taxable / (qty * factor);
+         basePrice = mrp > 0 ? mrp : basePrice;
+         disc = basePrice * qty * (discVal / 100);
       } else {
-         if (mrp > 0) basePrice = mrp;
-         disc = (basePrice * qty) - taxable;
+         disc = discVal;
       }
+      basePrice = (taxable + disc) / qty;
       netRate = total / qty;
     } else if (anchor === 'taxable') {
       taxable = inputValue;
       if (isPercent) {
-         let factor = 1 - (discVal / 100);
-         if (factor <= 0) factor = 0.001;
-         basePrice = taxable / (qty * factor);
+         basePrice = mrp > 0 ? mrp : basePrice;
+         disc = basePrice * qty * (discVal / 100);
       } else {
-         if (mrp > 0) basePrice = mrp;
-         disc = (basePrice * qty) - taxable;
+         disc = discVal;
       }
+      basePrice = (taxable + disc) / qty;
       total = taxable * (1 + (gstPercent / 100));
       netRate = total / qty;
     } else if (anchor === 'base') {
-      // User typed in the "Net Rate" column!
-      netRate = inputValue;
-      total = netRate * qty;
-      taxable = total / (1 + (gstPercent / 100));
-      disc = (basePrice * qty) - taxable;
+      basePrice = inputValue;
+      if (isPercent) {
+         basePrice = mrp > 0 ? mrp : basePrice;
+         disc = basePrice * qty * (discVal / 100);
+      } else {
+         disc = discVal;
+      }
+      taxable = (basePrice * qty) - disc;
+      total = taxable * (1 + (gstPercent / 100));
     } else if (anchor === 'disc') {
       if (isPercent) {
          disc = basePrice * qty * (discVal / 100);
@@ -741,8 +743,8 @@ const SuppliersModule = (() => {
     if (activeMathAnchor !== 'total') document.getElementById('pi-purchase-price').value = Math.max(0, res.total).toFixed(2);
     if (activeMathAnchor !== 'taxable') document.getElementById('pi-taxable-amount').value = Math.max(0, res.taxable).toFixed(2);
     
-    // update pi-base-price which represents net rate
-    if (activeMathAnchor !== 'base') document.getElementById('pi-base-price').value = Math.max(0, res.netRate).toFixed(2);
+    // update pi-base-price which represents the Rate
+    if (activeMathAnchor !== 'base') document.getElementById('pi-base-price').value = Math.max(0, res.basePrice).toFixed(2);
     
     // If we calculated disc (when anchor is total, taxable, or base), update the disc field too!
     if (activeMathAnchor !== 'disc' && res.disc !== undefined) {
@@ -880,37 +882,22 @@ const SuppliersModule = (() => {
     } else if (field === 'purchasePricePaise') {
       const newUnitPaise = Math.round((parseFloat(value) || 0) * 100);
       item.purchasePricePaise = newUnitPaise;
-      item.basePricePaise = newUnitPaise;
-      item.schemeDiscountPaise = 0;
-      item.explicitLineTotalPaise = undefined;
-      item.explicitLineGrandTotalPaise = undefined;
-    } else if (field === 'schemeDiscountPaise') {
-      item.schemeDiscountPaise = Math.round((parseFloat(value) || 0) * 100);
-      item.explicitLineTotalPaise = undefined;
-    } else if (field === 'purchasePricePaise') {
-      const newUnitPaise = Math.round((parseFloat(value) || 0) * 100);
-      item.purchasePricePaise = newUnitPaise; 
       item.explicitLineTotalPaise = newUnitPaise * item.quantity;
       
       const newTaxablePaise = Math.round((item.explicitLineTotalPaise * 100) / (100 + gstPercent));
-      const mrpPaise = item.sellingPricePaise || item.basePricePaise;
-      item.basePricePaise = mrpPaise;
-      item.schemeDiscountPaise = Math.max(0, (mrpPaise * item.quantity) - newTaxablePaise);
-    } else if (field === 'basePricePaise') {
-      item.basePricePaise = Math.round((parseFloat(value) || 0) * 100);
+      const discPaise = item.schemeDiscountPaise || 0;
+      item.basePricePaise = Math.round((newTaxablePaise + discPaise) / item.quantity);
+    } else if (field === 'schemeDiscountPaise') {
+      item.schemeDiscountPaise = Math.round((parseFloat(value) || 0) * 100);
       item.explicitLineTotalPaise = undefined;
     } else if (field === 'explicitLineTotalPaise') {
       const newTotalPaise = Math.round((parseFloat(value) || 0) * 100);
       item.explicitLineTotalPaise = newTotalPaise;
       
-      // Calculate new taxable based on explicit total
       const newTaxablePaise = Math.round((newTotalPaise * 100) / (100 + gstPercent));
       
-      // The user treats 'discount' as the amount saved from MRP.
-      // We sync Base Price to MRP so the scheme discount accurately reflects this.
-      const mrpPaise = item.sellingPricePaise || item.basePricePaise;
-      item.basePricePaise = mrpPaise;
-      item.schemeDiscountPaise = Math.max(0, (mrpPaise * item.quantity) - newTaxablePaise);
+      const discPaise = item.schemeDiscountPaise || 0;
+      item.basePricePaise = Math.round((newTaxablePaise + discPaise) / item.quantity);
       
     } else if (field === 'explicitLineGrandTotalPaise') {
       item.explicitLineGrandTotalPaise = Math.round((parseFloat(value) || 0) * 100);
@@ -941,7 +928,6 @@ const SuppliersModule = (() => {
       
       let derivedTotalVal = taxableVal + cgstVal + sgstVal;
       let totalValToDisplay = item.explicitLineTotalPaise !== undefined ? item.explicitLineTotalPaise : derivedTotalVal;
-      let netRateVal = item.quantity > 0 ? Math.round(totalValToDisplay / item.quantity) : 0;
 
       return `<tr>
         <td class="font-mono text-sm" style="padding: 4px;">${item.barcode}</td>
@@ -959,7 +945,7 @@ const SuppliersModule = (() => {
           <input type="number" min="1" style="width: 40px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.quantity}" onchange="updatePurchaseItemField(${idx}, 'quantity', this.value)">
         </td>
         <td class="text-sm" style="text-align:right; padding: 4px;">
-          ₹<input type="number" min="0" step="0.01" style="width: 60px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(netRateVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'purchasePricePaise', this.value)">
+          ₹<input type="number" min="0" step="0.01" style="width: 60px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(baseVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
         </td>
         <td class="text-sm text-muted" style="text-align:right; padding: 4px;">
           <input type="number" min="0" style="width: 40px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.freeQuantity || 0}" onchange="updatePurchaseItemField(${idx}, 'freeQuantity', this.value)">
