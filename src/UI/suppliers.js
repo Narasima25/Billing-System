@@ -939,28 +939,28 @@ const SuppliersModule = (() => {
         </td>
         <td class="text-sm" style="text-align:right; padding: 4px;">₹${((item.sellingPricePaise || 0) / 100).toFixed(2)}</td>
         <td class="text-sm" style="text-align:right; padding: 4px;">
-          ₹<input type="number" min="0" step="0.01" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent-amber);" value="${((item.schemeDiscountPaise || 0) / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'schemeDiscountPaise', this.value)">
+          ₹<input type="number" min="0" step="0.01" style="width: 65px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent-amber);" value="${((item.schemeDiscountPaise || 0) / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'schemeDiscountPaise', this.value)">
         </td>
         <td class="fw-700" style="text-align:right; padding: 4px;">
-          <input type="number" min="1" style="width: 40px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.quantity}" onchange="updatePurchaseItemField(${idx}, 'quantity', this.value)">
+          <input type="number" min="1" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.quantity}" onchange="updatePurchaseItemField(${idx}, 'quantity', this.value)">
         </td>
         <td class="text-sm" style="text-align:right; padding: 4px;">
-          ₹<input type="number" min="0" step="0.01" style="width: 60px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(baseVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
+          ₹<input type="number" min="0" step="0.01" style="width: 80px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${(baseVal / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'basePricePaise', this.value)">
         </td>
         <td class="text-sm text-muted" style="text-align:right; padding: 4px;">
-          <input type="number" min="0" style="width: 40px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.freeQuantity || 0}" onchange="updatePurchaseItemField(${idx}, 'freeQuantity', this.value)">
+          <input type="number" min="0" style="width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.freeQuantity || 0}" onchange="updatePurchaseItemField(${idx}, 'freeQuantity', this.value)">
         </td>
         <td class="text-sm" style="text-align:right; padding: 4px;">₹${(taxableVal / 100).toFixed(2)}</td>
         <td class="text-sm" style="text-align:right; padding: 4px;">
-          <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.cgstPercent}" onchange="updatePurchaseItemField(${idx}, 'cgstPercent', this.value)">%
+          <input type="number" min="0" step="0.1" style="width: 60px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.cgstPercent}" onchange="updatePurchaseItemField(${idx}, 'cgstPercent', this.value)">%
           <br><span class="text-muted" style="font-size:10px;">₹${(cgstVal / 100).toFixed(2)}</span>
         </td>
         <td class="text-sm" style="text-align:right; padding: 4px;">
-          <input type="number" min="0" step="0.1" style="width: 45px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.sgstPercent}" onchange="updatePurchaseItemField(${idx}, 'sgstPercent', this.value)">%
+          <input type="number" min="0" step="0.1" style="width: 60px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm);" value="${item.sgstPercent}" onchange="updatePurchaseItemField(${idx}, 'sgstPercent', this.value)">%
           <br><span class="text-muted" style="font-size:10px;">₹${(sgstVal / 100).toFixed(2)}</span>
         </td>
         <td class="fw-700 text-teal" style="text-align:right; padding: 4px;">
-          ₹<input type="number" min="0" step="0.01" style="width: 70px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: bold; color: var(--accent-teal);" value="${(totalValToDisplay / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'explicitLineTotalPaise', this.value)">
+          ₹<input type="number" min="0" step="0.01" style="width: 90px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: bold; color: var(--accent-teal);" value="${(totalValToDisplay / 100).toFixed(2)}" onchange="updatePurchaseItemField(${idx}, 'explicitLineTotalPaise', this.value)">
         </td>
         <td style="padding: 4px;"><button type="button" class="btn btn-ghost btn-sm" onclick="removePurchaseItem(${idx})" style="padding:4px;color:var(--accent-rose);">✕</button></td>
       </tr>`;
