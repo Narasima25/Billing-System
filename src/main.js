@@ -979,7 +979,7 @@ ipcMain.handle('billing:get-customer', async (_e, phone) => {
 
 ipcMain.handle('customers:get-all', async () => {
   try {
-    return queryAll("SELECT * FROM customers ORDER BY updated_at DESC");
+    return queryAll("SELECT * FROM customers ORDER BY created_at DESC");
   } catch (err) {
     return [];
   }
@@ -1375,7 +1375,7 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
       const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(id);
       for (const item of saleItems) {
         const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(item.product_id);
-        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (product.category_name || '').toLowerCase().includes('grooming') || (item.barcode || '').startsWith('SRV-'));
+        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (item.barcode || '').startsWith('SRV-'));
 
         if (!isService) {
           const freeQty = item.free_quantity || 0;
@@ -2213,7 +2213,7 @@ ipcMain.handle('reports:hsn-summary', async (_e, { startDate, endDate }) => {
   }
 });
 
-ipcMain.handle('reports:reconciliation', async (_e, { date }) => {
+ipcMain.handle('reports:reconciliation', async (_e, { startDate, endDate }) => {
   try {
     const summary = queryAll(`
       SELECT 
@@ -2221,17 +2221,17 @@ ipcMain.handle('reports:reconciliation', async (_e, { date }) => {
         SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN 1 ELSE 0 END) as transaction_count,
         SUM(grand_total_paise) as total_amount
       FROM sales
-      WHERE created_at LIKE ?
+      WHERE substr(created_at, 1, 10) >= ? AND substr(created_at, 1, 10) <= ?
       GROUP BY payment_mode
-    `, [date + '%']);
+    `, [startDate, endDate]);
 
     const sales = queryAll(`
       SELECT 
         id, receipt_number, customer_name, customer_phone, is_b2b, customer_gstin, payment_mode, grand_total_paise, created_at, COALESCE(is_return, 0) as is_return
       FROM sales
-      WHERE created_at LIKE ?
+      WHERE substr(created_at, 1, 10) >= ? AND substr(created_at, 1, 10) <= ?
       ORDER BY created_at DESC
-    `, [date + '%']);
+    `, [startDate, endDate]);
 
     return { summary, sales };
   } catch (err) {

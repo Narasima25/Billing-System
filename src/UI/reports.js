@@ -143,8 +143,12 @@ const ReportsModule = (() => {
       <div class="tab-pane" id="rpt-tab-reconciliation">
         <div class="report-filters">
           <div class="form-group">
-            <label class="form-label">Date</label>
-            <input type="date" class="form-input" id="rpt-recon-date" value="${today}">
+            <label class="form-label">From</label>
+            <input type="date" class="form-input" id="rpt-recon-from" value="${monthStart}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">To</label>
+            <input type="date" class="form-input" id="rpt-recon-to" value="${today}">
           </div>
           <button class="btn btn-primary btn-sm" id="rpt-recon-run">Generate</button>
           <button class="btn btn-secondary btn-sm" id="rpt-recon-export">📥 Export CSV</button>
@@ -534,11 +538,12 @@ const ReportsModule = (() => {
 
   // ─── Daily Reconciliation Report ────────────────────────────────────────
   async function runReconciliationReport() {
-    const date = document.getElementById('rpt-recon-date').value;
-    if (!date) return;
+    const from = document.getElementById('rpt-recon-from').value;
+    const to = document.getElementById('rpt-recon-to').value;
+    if (!from || !to) { showToast('Select date range', 'warning'); return; }
 
     try {
-      const { summary, sales } = await window.api.reports.reconciliation({ date });
+      const { summary, sales } = await window.api.reports.reconciliation({ startDate: from, endDate: to });
       const content = document.getElementById('rpt-recon-content');
       if (!summary || summary.length === 0) {
         content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No transactions on this date</p>';
@@ -592,6 +597,9 @@ const ReportsModule = (() => {
             <td>${regStatus}</td>
             <td><span class="badge ${payBadge}" style="font-size:10px;">${(s.payment_mode||'CASH').toUpperCase()}</span></td>
             <td class="fw-700 text-green">${formatRupees(s.grand_total_paise)}</td>
+            <td style="text-align:right;">
+              <button class="btn btn-ghost btn-sm btn-delete-sale text-rose" title="Delete Sale" style="padding:4px; margin:0;" onclick="window.deleteReconSale(event, ${s.id})">🗑️</button>
+            </td>
           </tr>`;
         }).join('');
 
@@ -599,7 +607,7 @@ const ReportsModule = (() => {
           <h3 class="mt-24 mb-12" style="font-size:14px; font-weight:600;">Detailed Transactions</h3>
           <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:500px; overflow-y:auto;">
             <table class="data-table" id="rpt-recon-details-table"><thead><tr>
-              <th>Receipt No</th><th>Time</th><th>Customer</th><th>Status</th><th>Mode</th><th>Amount</th>
+              <th>Receipt No</th><th>Time</th><th>Customer</th><th>Status</th><th>Mode</th><th>Amount</th><th style="width:40px;"></th>
             </tr></thead><tbody>
               ${salesRows}
             </tbody></table>
@@ -635,5 +643,24 @@ const ReportsModule = (() => {
     showToast('CSV exported', 'success');
   }
 
-  return { init };
+  async function deleteSale(event, id) {
+    event.stopPropagation();
+    if (confirm('Are you sure you want to completely delete this sale? This action will restore product inventory and adjust the daily totals.')) {
+      try {
+        const res = await window.api.billing.deleteSale(id);
+        if (res.success) {
+          showToast('Sale deleted and stock restored', 'success');
+          runReconciliationReport(); // Refresh the report
+        } else {
+          showToast(res.error || 'Failed to delete sale', 'error');
+        }
+      } catch (err) {
+        showToast('Error deleting sale', 'error');
+      }
+    }
+  }
+
+  return { init, deleteSale };
 })();
+
+window.deleteReconSale = ReportsModule.deleteSale;

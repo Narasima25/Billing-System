@@ -167,7 +167,7 @@ const ProductsModule = (() => {
     document.getElementById('prod-category').addEventListener('change', (e) => {
       const select = e.target;
       const catName = select.options[select.selectedIndex]?.text.toLowerCase() || '';
-      const isService = catName.includes('service') || catName.includes('grooming');
+      const isService = catName.includes('service');
 
       const barcodeGroup = document.getElementById('prod-barcode').closest('.form-group');
       const hsnGroup = document.getElementById('prod-hsn').closest('.form-group');
@@ -302,7 +302,7 @@ const ProductsModule = (() => {
       }
 
       const renderRow = (p) => {
-        const isService = (p.category_name || '').toLowerCase().includes('service') || (p.category_name || '').toLowerCase().includes('grooming') || (p.barcode || '').startsWith('SRV-');
+        const isService = (p.category_name || '').toLowerCase().includes('service') || (p.barcode || '').startsWith('SRV-');
         
         let stockClass = 'ok';
         if (p.stock_quantity === 0) stockClass = 'critical';
