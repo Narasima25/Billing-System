@@ -322,9 +322,9 @@ const ProductsModule = (() => {
           <td>${isService ? '<span class="text-muted">�</span>' : `<span class="stock-badge ${stockClass}">${p.stock_quantity}</span>`}</td>
           <td>
             <div class="btn-group" style="gap:4px;">
-              <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${p.id}" title="Edit">??</button>
-              ${isService ? '' : `<button class="btn btn-ghost btn-sm" data-action="adjust" data-id="${p.id}" data-name="${p.product_name}" data-barcode="${p.barcode}" title="Adjust Stock">??</button>`}
-              <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${p.id}" title="Delete">???</button>
+              <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${p.id}" title="Edit">&#x270E;</button>
+              ${isService ? '' : `<button class="btn btn-ghost btn-sm" data-action="adjust" data-id="${p.id}" data-name="${p.product_name}" data-barcode="${p.barcode}" title="Adjust Stock">&#x1F4E6;</button>`}
+              <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${p.id}" title="Delete">&#x1F5D1;</button>
             </div>
           </td>
         </tr>`;

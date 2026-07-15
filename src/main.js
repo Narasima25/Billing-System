@@ -6,15 +6,8 @@
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 
-// Fix for screen freezing/lagging after ~30 minutes of inactivity
-app.disableHardwareAcceleration();
-
-// --- LOW-END DEVICE OPTIMIZATIONS (No GPU, 4GB RAM, Low CPU) ---
-app.commandLine.appendSwitch('disable-smooth-scrolling'); // Saves CPU on scrolling
-app.commandLine.appendSwitch('wm-window-animations-disabled'); // Disables window animations
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
-app.commandLine.appendSwitch('disable-gpu-shader-disk-cache'); // Suppress Access is denied Gpu Cache Creation failed
-app.commandLine.appendSwitch('disable-gpu-compositing'); // Disable GPU compositing to prevent freeze
+// Hardware acceleration is ENABLED by default to prevent UI lag on large DOM tables.
+// Removed the 'disable-gpu' flags which force CPU rendering and cause 30-min freezes.
 
 const { autoUpdater } = require('electron-updater');
 
@@ -166,10 +159,16 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       spellcheck: false, // Fixes severe typing lag on Windows (especially with low-end CPUs)
-      backgroundThrottling: false, // Prevents lag when window is minimized or occluded
+      backgroundThrottling: true, // Allow throttling when minimized to save CPU
+      enableRemoteModule: false,
     },
+  });
+
+  // Security Hardening: Prevent opening new windows (e.g. from target="_blank")
+  mainWindow.webContents.setWindowOpenHandler(() => {
+    return { action: 'deny' };
   });
 
   if (isLicensed) {

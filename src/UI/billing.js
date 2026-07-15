@@ -281,14 +281,18 @@ const BillingModule = (() => {
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const currentTime = Date.now();
         // Hardware scanners are extremely fast (<20ms per char). Humans are typically >50ms.
-        if (currentTime - lastKeyTime > 50) {
+        if (currentTime - lastKeyTime > 40) {
           scanBuffer = '';
         }
         lastKeyTime = currentTime;
 
         scanBuffer += e.key;
-        clearTimeout(scanTimer);
-        scanTimer = setTimeout(() => { scanBuffer = ''; }, 100);
+        
+        // Only reset the timeout occasionally during a burst to save CPU
+        if (scanBuffer.length === 1) {
+          clearTimeout(scanTimer);
+          scanTimer = setTimeout(() => { scanBuffer = ''; }, 100);
+        }
       }
     });
 
@@ -1028,7 +1032,7 @@ const BillingModule = (() => {
       if (totalReward > 0) {
         rewardHtml = `
           <div style="margin-top:16px; padding:12px; background:rgba(32, 201, 151, 0.1); border:1px dashed var(--accent-teal); border-radius:8px;">
-            <div style="font-size:24px; margin-bottom:4px;">??</div>
+            <div style="font-size:24px; margin-bottom:4px;">&#x1F381;</div>
             <div style="color:var(--accent-teal); font-weight:800; font-size:16px;">Reward Earned!</div>
             <div style="font-size:14px;">Tell the customer they won <b>${formatRupees(totalReward)}</b> for their next visit!</div>
           </div>
