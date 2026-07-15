@@ -1111,7 +1111,7 @@ const BillingModule = (() => {
 
       const receiptNumbersStr = results.map(r => r.receiptNumber).join(' & ');
       const grandTotalsSum = results.reduce((sum, r) => sum + (r.grandTotalPaise || 0), 0);
-      showToast(`Sale ${receiptNumbersStr} � ${formatRupees(grandTotalsSum)}`, 'success');
+      showToast(`Sale ${receiptNumbersStr} - ${formatRupees(grandTotalsSum)}`, 'success');
     } catch (err) {
       console.error('[Billing] checkout error:', err);
       showToast('Checkout error: ' + (err.message || 'Unknown error'), 'error');

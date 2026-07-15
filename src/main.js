@@ -1150,7 +1150,7 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
            finalSDiscount = globalDiscount - cartsToProcess[0].discount;
            finalSCoupon = actualAppliedCoupon - cartsToProcess[0].coupon;
         }
-        cartsToProcess.push({ items: serviceCart, discount: finalSDiscount, coupon: finalSCoupon, customReceiptNumber: `SRV-${Date.now()}`, isServiceCart: true, cartGross: sTotal });
+        cartsToProcess.push({ items: serviceCart, discount: finalSDiscount, coupon: finalSCoupon, customReceiptNumber: null, isServiceCart: true, cartGross: sTotal });
       }
 
       // 5. Process Each Cart
@@ -1204,7 +1204,7 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
         }
 
         const grandTotalPaise = subtotalPaise + totalCgstPaise + totalSgstPaise + totalIgstPaise;
-        const receiptNumber = cart.customReceiptNumber || generateReceiptNumber(db, invoiceDate);
+        const receiptNumber = cart.customReceiptNumber || generateReceiptNumber(db, invoiceDate, cart.isServiceCart);
         
         // Only report the reward earned on the primary cart (e.g. the first one) to not duplicate on UI
         const isFirstCart = results.length === 0;
@@ -1458,7 +1458,8 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
         throw new Error("No items selected for return");
       }
 
-      const creditNoteNumber = generateReceiptNumber(db);
+      const isServiceSale = receiptNum.startsWith('SRV-');
+      const creditNoteNumber = generateReceiptNumber(db, null, isServiceSale);
 
       let refundSubtotalPaise = 0;
       let refundCgstPaise = 0;
@@ -2003,12 +2004,12 @@ ipcMain.handle('dashboard:get-stats', async () => {
     const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
 
     const todaySales = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at LIKE ? AND COALESCE(is_return, 0) = 0",
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN 1 ELSE 0 END) as cnt FROM sales WHERE created_at LIKE ?",
       [`${todayStr}%`]
     );
 
     const monthlySales = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at >= ? AND COALESCE(is_return, 0) = 0",
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN 1 ELSE 0 END) as cnt FROM sales WHERE created_at >= ?",
       [monthStart]
     );
 
@@ -2115,7 +2116,13 @@ ipcMain.handle('reports:services', async (_e, { startDate, endDate }) => {
        FROM sales s
        LEFT JOIN users u ON s.user_id = u.id
        WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
-       AND s.receipt_number LIKE 'SRV-%'`;
+       AND (s.receipt_number LIKE 'SRV-%' OR EXISTS (
+         SELECT 1 FROM sale_items si 
+         LEFT JOIN products p ON si.product_id = p.id 
+         LEFT JOIN categories c ON p.category_id = c.id 
+         WHERE si.sale_id = s.id 
+         AND (LOWER(COALESCE(c.name, '')) LIKE '%service%' OR LOWER(COALESCE(c.name, '')) LIKE '%grooming%' OR si.barcode LIKE 'SRV-%')
+       ))`;
 
     let summaryQuery = `SELECT COUNT(*) as total_sales,
         COALESCE(SUM(subtotal_paise), 0) as total_subtotal,
@@ -2124,8 +2131,14 @@ ipcMain.handle('reports:services', async (_e, { startDate, endDate }) => {
         COALESCE(SUM(sgst_paise), 0) as total_sgst,
         COALESCE(SUM(igst_paise), 0) as total_igst,
         COALESCE(SUM(grand_total_paise), 0) as total_grand
-       FROM sales WHERE date(created_at) >= ? AND date(created_at) <= ?
-       AND receipt_number LIKE 'SRV-%'`;
+       FROM sales s WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
+       AND (s.receipt_number LIKE 'SRV-%' OR EXISTS (
+         SELECT 1 FROM sale_items si 
+         LEFT JOIN products p ON si.product_id = p.id 
+         LEFT JOIN categories c ON p.category_id = c.id 
+         WHERE si.sale_id = s.id 
+         AND (LOWER(COALESCE(c.name, '')) LIKE '%service%' OR LOWER(COALESCE(c.name, '')) LIKE '%grooming%' OR si.barcode LIKE 'SRV-%')
+       ))`;
 
     const params = [startDate, endDate];
     salesQuery += ` ORDER BY s.created_at DESC`;
@@ -2205,18 +2218,18 @@ ipcMain.handle('reports:reconciliation', async (_e, { date }) => {
     const summary = queryAll(`
       SELECT 
         payment_mode,
-        COUNT(*) as transaction_count,
+        SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN 1 ELSE 0 END) as transaction_count,
         SUM(grand_total_paise) as total_amount
       FROM sales
-      WHERE created_at LIKE ? AND COALESCE(is_return, 0) = 0
+      WHERE created_at LIKE ?
       GROUP BY payment_mode
     `, [date + '%']);
 
     const sales = queryAll(`
       SELECT 
-        id, receipt_number, customer_name, customer_phone, is_b2b, customer_gstin, payment_mode, grand_total_paise, created_at
+        id, receipt_number, customer_name, customer_phone, is_b2b, customer_gstin, payment_mode, grand_total_paise, created_at, COALESCE(is_return, 0) as is_return
       FROM sales
-      WHERE created_at LIKE ? AND COALESCE(is_return, 0) = 0
+      WHERE created_at LIKE ?
       ORDER BY created_at DESC
     `, [date + '%']);
 
@@ -2278,7 +2291,7 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
        FROM sale_items si
        JOIN sales s ON si.sale_id = s.id
        JOIN products p ON si.product_id = p.id
-       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ? AND COALESCE(s.is_return, 0) = 0`,
+       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?`,
       [startDate, endDate]
     );
 
@@ -2293,7 +2306,7 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
     const discountRes = queryAll(
       `SELECT SUM(discount_paise) as total_discount
        FROM sales
-       WHERE date(created_at) >= ? AND date(created_at) <= ? AND COALESCE(is_return, 0) = 0`,
+       WHERE date(created_at) >= ? AND date(created_at) <= ?`,
       [startDate, endDate]
     );
     const totalDiscount = discountRes[0]?.total_discount || 0;

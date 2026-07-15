@@ -314,12 +314,12 @@ const ProductsModule = (() => {
             ${p.brand ? `<div class="text-sm text-muted">${p.brand}</div>` : ''}
           </td>
           <td><span class="font-mono text-sm">${p.barcode}</span></td>
-          <td>${p.category_name ? `<span class="badge badge-teal">${p.category_name}</span>` : '<span class="text-muted">�</span>'}</td>
-          <td><span class="font-mono text-sm">${p.hsn_code || '�'}</span></td>
+          <td>${p.category_name ? `<span class="badge badge-teal">${p.category_name}</span>` : '<span class="text-muted">-</span>'}</td>
+          <td><span class="font-mono text-sm">${p.hsn_code || '-'}</span></td>
           <td>${formatRupees(p.base_price_paise)}</td>
           <td class="fw-700">${formatRupees(p.selling_price_paise)}</td>
           <td>${p.gst_percent || 0}%</td>
-          <td>${isService ? '<span class="text-muted">�</span>' : `<span class="stock-badge ${stockClass}">${p.stock_quantity}</span>`}</td>
+          <td>${isService ? '<span class="text-muted">-</span>' : `<span class="stock-badge ${stockClass}">${p.stock_quantity}</span>`}</td>
           <td>
             <div class="btn-group" style="gap:4px;">
               <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${p.id}" title="Edit">&#x270E;</button>

@@ -584,12 +584,15 @@ function initializeSchema(db) {
  * @param {object} db - better-sqlite3 Database instance
  * @returns {string} Receipt number
  */
-function generateReceiptNumber(db, invoiceDateStr = null) {
+function generateReceiptNumber(db, invoiceDateStr = null, isService = false) {
   const dateObj = invoiceDateStr ? new Date(invoiceDateStr) : new Date();
   const year = dateObj.getFullYear();
 
+  const counterKey = isService ? 'service_receipt_counter' : 'receipt_counter';
+  const prefixBase = isService ? 'SRV' : 'PET';
+
   // Get and increment the counter
-  const result = db.prepare("SELECT value FROM settings WHERE key = 'receipt_counter'").get();
+  const result = db.prepare("SELECT value FROM settings WHERE key = ?").get(counterKey);
   let counter = 0;
   if (result && result.value) {
     counter = parseInt(result.value) || 0;
@@ -597,7 +600,7 @@ function generateReceiptNumber(db, invoiceDateStr = null) {
 
   // Self-heal: ensure counter is at least as high as the max existing receipt number
   // This prevents duplicates after test scripts, corrupted restores, or manual DB edits
-  const prefix = `PET-${year}-`;
+  const prefix = `${prefixBase}-${year}-`;
   const maxExisting = db.prepare(
     "SELECT receipt_number FROM sales WHERE receipt_number LIKE ? AND length(receipt_number) < 15 ORDER BY receipt_number DESC LIMIT 1"
   ).get(prefix + '%');
@@ -616,13 +619,17 @@ function generateReceiptNumber(db, invoiceDateStr = null) {
   let maxRetries = 100;
   while (maxRetries-- > 0) {
     const padded = counter.toString().padStart(3, '0');
-    receiptNumber = `PET-${year}-${padded}`;
+    receiptNumber = `${prefixBase}-${year}-${padded}`;
     const exists = db.prepare("SELECT 1 FROM sales WHERE receipt_number = ?").get(receiptNumber);
     if (!exists) break;
     counter++;
   }
 
-  db.prepare("UPDATE settings SET value = ? WHERE key = 'receipt_counter'").run(counter.toString());
+  if (result) {
+    db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(counter.toString(), counterKey);
+  } else {
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(counterKey, counter.toString());
+  }
 
   return receiptNumber;
 }
