@@ -246,10 +246,34 @@ const BillingModule = (() => {
     let scanTimer = null;
     let lastKeyTime = Date.now();
 
+    // Bug fix #1: IDs of inputs that should NOT feed into the scan buffer.
+    // When a user is typing into these fields (phone, search, discount, etc.),
+    // keystrokes must not accumulate in scanBuffer to prevent false barcode detection.
+    const ignoredInputIds = new Set([
+      'billing-customer-phone', 'billing-customer-name', 'billing-manual-search',
+      'billing-discount', 'billing-discount-percent', 'billing-applied-coupon',
+      'billing-grand-total', 'billing-invoice-number', 'billing-invoice-date',
+      'b2b-name', 'b2b-gstin', 'b2b-address', 'b2b-phone', 'customer-state-code',
+      'return-receipt-number'
+    ]);
+
+    function isIgnoredInput() {
+      const el = document.activeElement;
+      if (!el || el.tagName !== 'INPUT' && el.tagName !== 'SELECT') return false;
+      if (el === scanner) return false; // scanner input is always allowed
+      return ignoredInputIds.has(el.id);
+    }
+
     document.addEventListener('keydown', async (e) => {
       if (!panel.classList.contains('active') || document.querySelector('.modal-overlay.visible')) return;
 
       if (e.key === 'Enter') {
+        // If focused on a known input field, do NOT treat scanBuffer as a barcode
+        if (isIgnoredInput()) {
+          scanBuffer = '';
+          return;
+        }
+
         let barcode = scanBuffer;
 
         // Optimization for hardware machine scanners directly in the input
@@ -280,6 +304,9 @@ const BillingModule = (() => {
         scanBuffer = '';
         return;
       }
+
+      // Bug fix #1: Do NOT accumulate keystrokes in scanBuffer when typing in known input fields
+      if (isIgnoredInput()) return;
 
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const currentTime = Date.now();
@@ -432,6 +459,18 @@ const BillingModule = (() => {
           if (couponInput.value !== '') {
             couponInput.value = '';
             updateTotals(); // in case they cleared phone
+          }
+        }
+      });
+      
+      // Allow pressing Enter to quickly navigate back to the product search
+      phoneInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const manualSearch = document.getElementById('billing-manual-search');
+          if (manualSearch) {
+            manualSearch.focus();
+            manualSearch.select();
           }
         }
       });
@@ -599,7 +638,7 @@ const BillingModule = (() => {
       if (e.target.closest('.qty-plus')) {
         // Check stock before increasing
         const item = cart[idx];
-        if (!item._isService && item._stockQty && item.quantity >= item._stockQty) {
+        if (!item._isService && item._stockQty && (item.quantity + (item.freeQuantity || 0)) >= item._stockQty) {
           showToast(`Maximum stock reached (${item._stockQty})`, 'warning');
           return;
         }
@@ -622,8 +661,8 @@ const BillingModule = (() => {
         let newQty = parseInt(e.target.value);
         const item = cart[idx];
         if (!isNaN(newQty) && newQty >= 1) {
-          if (!item._isService && item._stockQty && newQty > item._stockQty) {
-            newQty = item._stockQty;
+          if (!item._isService && item._stockQty && (newQty + (item.freeQuantity || 0)) > item._stockQty) {
+            newQty = Math.max(1, item._stockQty - (item.freeQuantity || 0));
             e.target.value = newQty;
             showToast(`Maximum stock reached (${item._stockQty})`, 'warning');
           }
@@ -640,9 +679,15 @@ const BillingModule = (() => {
           cart[idx].discountPaise = Math.round(newDiscount * 100);
         }
       } else if (e.target.classList.contains('ci-free-input')) {
-        const newFreeQty = parseInt(e.target.value);
+        let newFreeQty = parseInt(e.target.value);
+        const item = cart[idx];
         if (!isNaN(newFreeQty) && newFreeQty >= 0) {
-          cart[idx].freeQuantity = newFreeQty;
+          if (!item._isService && item._stockQty && (item.quantity + newFreeQty) > item._stockQty) {
+            newFreeQty = Math.max(0, item._stockQty - item.quantity);
+            e.target.value = newFreeQty;
+            showToast(`Maximum stock reached (${item._stockQty})`, 'warning');
+          }
+          item.freeQuantity = newFreeQty;
         }
       }
 
@@ -685,7 +730,7 @@ const BillingModule = (() => {
 
       // Check stock
       const existing = cart.find(c => c.barcode === barcode);
-      const cartQty = existing ? existing.quantity : 0;
+      const cartQty = existing ? (existing.quantity + (existing.freeQuantity || 0)) : 0;
       const isService = (product.category_name || '').toLowerCase().includes('service') || (product.barcode || '').startsWith('SRV-');
 
       if (!isService && product.stock_quantity <= 0) {
@@ -881,12 +926,24 @@ const BillingModule = (() => {
 
     const isInterState = document.getElementById('chk-inter-state') ? document.getElementById('chk-inter-state').checked : false;
 
-    cart.forEach(item => {
+    let distributedDiscount = 0;
+
+    cart.forEach((item, idx) => {
       const itemDiscount = item.discountPaise || 0;
       const itemGross = Math.max(0, (item.unitPricePaise * item.quantity) - itemDiscount);
       
-      const proportion = totalGrossPaise > 0 ? (itemGross / totalGrossPaise) : 0;
-      const itemGlobalDiscount = Math.round(proportion * totalGlobalDiscountPaise);
+      let itemGlobalDiscount = 0;
+      if (idx === cart.length - 1) {
+        itemGlobalDiscount = Math.max(0, totalGlobalDiscountPaise - distributedDiscount);
+        // Fallback: If for some reason the remaining discount is more than itemGross, cap it, though it shouldn't happen usually
+        itemGlobalDiscount = Math.min(itemGlobalDiscount, itemGross); 
+      } else {
+        const proportion = totalGrossPaise > 0 ? (itemGross / totalGrossPaise) : 0;
+        itemGlobalDiscount = Math.round(proportion * totalGlobalDiscountPaise);
+        itemGlobalDiscount = Math.min(itemGlobalDiscount, itemGross); // Cap at item gross
+      }
+      distributedDiscount += itemGlobalDiscount;
+
       const lineTotalAfterGlobalDisc = Math.max(0, itemGross - itemGlobalDiscount);
 
       if (item.gstPercent > 0) {
@@ -1048,7 +1105,7 @@ const BillingModule = (() => {
         customerGstin,
         customerStateCode,
         customerPhone,
-        customerAddress: '',
+        customerAddress: isB2B ? (document.getElementById('b2b-address') ? document.getElementById('b2b-address').value.trim() : '') : '',
         appliedCouponPaise,
         invoiceDate: document.getElementById('billing-invoice-date') ? document.getElementById('billing-invoice-date').value : null,
         sendWhatsappReceipt: document.getElementById('billing-send-whatsapp') ? document.getElementById('billing-send-whatsapp').checked : false,
@@ -1135,14 +1192,10 @@ const BillingModule = (() => {
         updateCartUI();
 
       // Fetch new receipt number for the next sale
-      if (typeof updateReceiptNumber !== 'undefined') {
-        await updateReceiptNumber();
-      } else {
-        if (invInput) {
-          const nextNum = await window.api.billing.getNextReceiptNumber(document.getElementById('billing-invoice-date') ? document.getElementById('billing-invoice-date').value : null);
-          invInput.value = nextNum;
-          isInvoiceNumberEdited = false;
-        }
+      if (invInput) {
+        const nextNum = await window.api.billing.getNextReceiptNumber(document.getElementById('billing-invoice-date') ? document.getElementById('billing-invoice-date').value : null);
+        invInput.value = nextNum;
+        isInvoiceNumberEdited = false;
       }
 
       const receiptNumbersStr = results.map(r => r.receiptNumber).join(' & ');
@@ -1397,6 +1450,24 @@ const BillingModule = (() => {
       }
       const couponInput = document.getElementById('billing-applied-coupon');
       if (couponInput) couponInput.value = '';
+    }
+    // Bug fix #12: Reset B2B and inter-state fields (same as handleCheckout)
+    document.getElementById('chk-b2b').checked = false;
+    document.getElementById('b2b-fields').style.display = 'none';
+    document.getElementById('b2b-name').value = '';
+    document.getElementById('b2b-gstin').value = '';
+    if (document.getElementById('b2b-address')) document.getElementById('b2b-address').value = '';
+    if (document.getElementById('b2b-phone')) document.getElementById('b2b-phone').value = '';
+    document.getElementById('chk-inter-state').checked = false;
+    document.getElementById('inter-state-fields').style.display = 'none';
+    document.getElementById('customer-state-code').value = '';
+    document.getElementById('row-cgst').style.display = 'flex';
+    document.getElementById('row-sgst').style.display = 'flex';
+    document.getElementById('row-igst').style.display = 'none';
+    const invoiceLabelText = document.getElementById('billing-invoice-label-text');
+    if (invoiceLabelText) invoiceLabelText.textContent = 'R.N (Receipt Number)';
+    if (document.getElementById('billing-send-whatsapp')) {
+      document.getElementById('billing-send-whatsapp').checked = true;
     }
     updateCartUI();
     scanner.focus();

@@ -735,33 +735,63 @@ ipcMain.handle('products:update', async (_e, data) => {
             "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, ?, ?, 'Direct Edit')",
             [data.id, type, Math.abs(diff)]
           );
-        }
-      }
-
-      if (data.batchNumber || data.expiryDate) {
-        if (data.batchNumber) {
-          const existingBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? AND batch_number = ?", [data.id, data.batchNumber]);
-          if (existingBatch) {
-            runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', existingBatch.id]);
+          
+          if (diff > 0) {
+            const batchNum = data.batchNumber || ('ADJ-' + Date.now().toString().slice(-4));
+            const expDate = data.expiryDate || '';
+            const existingBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? AND batch_number = ?", [data.id, batchNum]);
+            if (existingBatch) {
+              runSql("UPDATE product_batches SET quantity = quantity + ?, expiry_date = ? WHERE id = ?", [diff, expDate, existingBatch.id]);
+            } else {
+              runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
+                [data.id, batchNum, expDate, diff, data.purchasePricePaise ?? existingProduct.purchase_price_paise, data.sellingPricePaise ?? existingProduct.selling_price_paise]);
+            }
           } else {
-            const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [data.id]);
-            runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
-              [data.id, data.batchNumber, data.expiryDate || '', prod ? prod.stock_quantity : 0, prod ? prod.purchase_price_paise : 0, prod ? prod.selling_price_paise : 0]);
+            let remainingQtyToDeduct = Math.abs(diff);
+            const batches = db.prepare(`
+              SELECT * FROM product_batches 
+              WHERE product_id = ? AND quantity > 0 
+              ORDER BY 
+                CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
+                created_at ASC
+            `).all(data.id);
+
+            for (const batch of batches) {
+              if (remainingQtyToDeduct <= 0) break;
+              if (batch.quantity >= remainingQtyToDeduct) {
+                runSql("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?", [remainingQtyToDeduct, batch.id]);
+                remainingQtyToDeduct = 0;
+              } else {
+                remainingQtyToDeduct -= batch.quantity;
+                runSql("UPDATE product_batches SET quantity = 0 WHERE id = ?", [batch.id]);
+              }
+            }
           }
         } else {
-          const latestBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? ORDER BY id DESC LIMIT 1", [data.id]);
-          if (latestBatch) {
-            runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', latestBatch.id]);
-          } else {
-            const prod = queryOne("SELECT stock_quantity, purchase_price_paise, selling_price_paise FROM products WHERE id = ?", [data.id]);
-            runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
-              [data.id, 'B-' + Date.now().toString().slice(-4), data.expiryDate || '', prod ? prod.stock_quantity : 0, prod ? prod.purchase_price_paise : 0, prod ? prod.selling_price_paise : 0]);
+          if (data.batchNumber || data.expiryDate) {
+            if (data.batchNumber) {
+              const existingBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? AND batch_number = ?", [data.id, data.batchNumber]);
+              if (existingBatch) {
+                runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', existingBatch.id]);
+              } else {
+                runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, 0, ?, ?)",
+                  [data.id, data.batchNumber, data.expiryDate || '', data.purchasePricePaise ?? existingProduct.purchase_price_paise, data.sellingPricePaise ?? existingProduct.selling_price_paise]);
+              }
+            } else {
+              const latestBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? ORDER BY id DESC LIMIT 1", [data.id]);
+              if (latestBatch) {
+                runSql("UPDATE product_batches SET expiry_date = ? WHERE id = ?", [data.expiryDate || '', latestBatch.id]);
+              } else {
+                runSql("INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, 0, ?, ?)",
+                  [data.id, 'B-' + Date.now().toString().slice(-4), data.expiryDate || '', data.purchasePricePaise ?? existingProduct.purchase_price_paise, data.sellingPricePaise ?? existingProduct.selling_price_paise]);
+              }
+            }
+          } else if (data.batchNumber === '' && data.expiryDate === '') {
+            const latestBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? ORDER BY id DESC LIMIT 1", [data.id]);
+            if (latestBatch) {
+              runSql("UPDATE product_batches SET expiry_date = '' WHERE id = ?", [latestBatch.id]);
+            }
           }
-        }
-      } else if (data.batchNumber === '' && data.expiryDate === '') {
-        const latestBatch = queryOne("SELECT id FROM product_batches WHERE product_id = ? ORDER BY id DESC LIMIT 1", [data.id]);
-        if (latestBatch) {
-          runSql("UPDATE product_batches SET expiry_date = '' WHERE id = ?", [latestBatch.id]);
         }
       }
     });
@@ -1143,14 +1173,18 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
         }
         if (appliedCouponPaise > 0) {
           actualAppliedCoupon = Math.min(appliedCouponPaise, cust.coupon_balance_paise, globalGrandTotal);
-          globalGrandTotal -= actualAppliedCoupon;
         }
-        if (globalGrandTotal >= 100000) { // 1000 rupees
-          rewardEarnedPaise = Math.floor(globalGrandTotal * 0.01);
+        
+        // Use the pre-coupon globalGrandTotal for lifetime spend to match the return logic
+        const preCouponGrandTotal = globalGrandTotal;
+        globalGrandTotal -= actualAppliedCoupon;
+
+        if (preCouponGrandTotal >= 100000) { // 1000 rupees
+          rewardEarnedPaise = Math.floor(preCouponGrandTotal * 0.01);
         }
         db.prepare(
           "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = total_lifetime_spent_paise + ?, updated_at = datetime('now','localtime') WHERE id = ?"
-        ).run(actualAppliedCoupon, rewardEarnedPaise, globalGrandTotal, customerId);
+        ).run(actualAppliedCoupon, rewardEarnedPaise, preCouponGrandTotal, customerId);
         newCouponBalancePaise = cust.coupon_balance_paise - actualAppliedCoupon + rewardEarnedPaise;
       } else {
         if (appliedCouponPaise > 0) {
@@ -1213,9 +1247,20 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
 
         const cartGlobalDiscount = cart.discount + cart.coupon;
 
-        for (const item of cart.items) {
-          const proportion = cart.cartGross > 0 ? (item._itemGross / cart.cartGross) : 0;
-          const itemGlobalDiscount = Math.round(proportion * cartGlobalDiscount);
+        let distributedDiscount = 0;
+
+        cart.items.forEach((item, idx) => {
+          let itemGlobalDiscount = 0;
+          if (idx === cart.items.length - 1) {
+            itemGlobalDiscount = Math.max(0, cartGlobalDiscount - distributedDiscount);
+            itemGlobalDiscount = Math.min(itemGlobalDiscount, item._itemGross);
+          } else {
+            const proportion = cart.cartGross > 0 ? (item._itemGross / cart.cartGross) : 0;
+            itemGlobalDiscount = Math.round(proportion * cartGlobalDiscount);
+            itemGlobalDiscount = Math.min(itemGlobalDiscount, item._itemGross);
+          }
+          distributedDiscount += itemGlobalDiscount;
+
           item._itemGlobalDiscount = itemGlobalDiscount; // cache it for sale_items insertion
           const lineTotalAfterGlobalDisc = Math.max(0, item._itemGross - itemGlobalDiscount);
 
@@ -1277,6 +1322,11 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
               created_at ASC
           `).all(item.productId);
 
+          let remainingFreeQty = parseInt(item.freeQuantity) || 0;
+          const baseItemDiscount = parseInt(item.discountPaise) || 0;
+          const globalAllocatedDiscount = item._itemGlobalDiscount || 0;
+          let remainingDiscount = baseItemDiscount + globalAllocatedDiscount;
+
           let batchIndex = 0;
           while (remainingQuantityToDeduct > 0) {
             let batchId = null;
@@ -1305,16 +1355,19 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
               remainingQuantityToDeduct = 0;
             }
 
-            const baseItemDiscount = parseInt(item.discountPaise) || 0;
-            const globalAllocatedDiscount = item._itemGlobalDiscount || 0;
-            const totalItemDiscount = baseItemDiscount + globalAllocatedDiscount;
-            
-            const isFirstBatch = (qtyToDeductFromBatch === totalQuantityToDeduct) || (remainingQuantityToDeduct === (totalQuantityToDeduct - qtyToDeductFromBatch));
-            const appliedDiscount = isFirstBatch ? totalItemDiscount : 0;
-            const appliedFreeQty = isFirstBatch ? freeQuantity : 0;
+            const appliedFreeQty = Math.min(remainingFreeQty, qtyToDeductFromBatch);
+            remainingFreeQty -= appliedFreeQty;
 
-            const billedQtyForBatch = Math.max(0, qtyToDeductFromBatch - appliedFreeQty);
+            const billedQtyForBatch = qtyToDeductFromBatch - appliedFreeQty;
             const lineTotalPart = billedQtyForBatch * item.unitPricePaise;
+
+            let appliedDiscount = 0;
+            if (remainingQuantityToDeduct === 0) {
+              appliedDiscount = remainingDiscount;
+            } else {
+              appliedDiscount = Math.min(remainingDiscount, lineTotalPart);
+            }
+            remainingDiscount -= appliedDiscount;
 
             db.prepare(
               `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, free_quantity, unit_price_paise, purchase_price_paise, discount_paise, gst_percent, hsn_code, line_total_paise, batch_id)
@@ -1644,12 +1697,12 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
       // Create negative sale record
       const { lastInsertRowid: returnSaleId } = db.prepare(
         `INSERT INTO sales (receipt_number, user_id, customer_name, customer_gstin, is_b2b, subtotal_paise, discount_paise,
-          cgst_paise, sgst_paise, igst_paise, is_inter_state, grand_total_paise, payment_mode, is_return, original_receipt_number, notes, applied_coupon_paise, reward_earned_paise)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          cgst_paise, sgst_paise, igst_paise, is_inter_state, grand_total_paise, payment_mode, is_return, original_receipt_number, notes, applied_coupon_paise, reward_earned_paise, customer_phone, customer_state_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         creditNoteNumber, userId || null, originalSale.customer_name, originalSale.customer_gstin, originalSale.is_b2b,
         -refundSubtotalPaise, -refundDiscountPaise, -refundCgstPaise, -refundSgstPaise, -refundIgstPaise,
-        originalSale.is_inter_state, -finalRefundGrandTotal, originalSale.payment_mode, 1, receiptNum, 'Sales Return', -couponToRefund, -rewardToReverse
+        originalSale.is_inter_state, -finalRefundGrandTotal, originalSale.payment_mode, 1, receiptNum, 'Sales Return', -couponToRefund, -rewardToReverse, originalSale.customer_phone || '', originalSale.customer_state_code || ''
       );
 
       // Restore inventory and insert negative sale items
@@ -1882,22 +1935,36 @@ ipcMain.handle('purchases:delete', async (_e, purchaseId) => {
               db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(
                 deductQty, item.product_id
               );
+              
+              // FIFO deduct from batches to ensure exact sync
+              let remainingQtyToDeduct = deductQty;
+              const batches = db.prepare(`
+                SELECT * FROM product_batches 
+                WHERE product_id = ? AND quantity > 0 
+                ORDER BY 
+                  CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
+                  created_at ASC
+              `).all(item.product_id);
+
+              for (const batch of batches) {
+                if (remainingQtyToDeduct <= 0) break;
+                if (batch.quantity >= remainingQtyToDeduct) {
+                  db.prepare("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?").run(remainingQtyToDeduct, batch.id);
+                  remainingQtyToDeduct = 0;
+                } else {
+                  remainingQtyToDeduct -= batch.quantity;
+                  db.prepare("UPDATE product_batches SET quantity = 0 WHERE id = ?").run(batch.id);
+                }
+              }
             }
 
             // Log adjustment
             db.prepare(
               "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'reduce', ?, ?)"
             ).run(
-              item.product_id, totalQty, `Purchase Deleted: ${invNum}`
+              item.product_id, deductQty, `Purchase Deleted: ${invNum}`
             );
           }
-        }
-
-        // Delete batches created for this purchase by auto-generated pattern (P-invNum-*)
-        // and by matching the exact batch number stored during purchase creation
-        for (const item of items) {
-          const escapedInvNum = String(invNum).replace(/[%_]/g, '\\$&');
-          db.prepare("DELETE FROM product_batches WHERE product_id = ? AND batch_number LIKE ? ESCAPE '\\'").run(item.product_id, `P-${escapedInvNum}-%`);
         }
       }
 
@@ -1939,18 +2006,42 @@ ipcMain.handle('purchases:return:add', async (_e, data) => {
         const currentProd = db.prepare("SELECT stock_quantity FROM products WHERE id = ?").get(item.productId);
         const currentStock = currentProd ? currentProd.stock_quantity : 0;
         const stockDeduct = Math.min(item.quantity, Math.max(0, currentStock));
+        
         if (stockDeduct > 0) {
           db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?").run(stockDeduct, item.productId);
-        }
-        
-        if (item.batchNumber) {
-          // Bug fix: Prevent batch quantity from going negative
-          db.prepare("UPDATE product_batches SET quantity = MAX(0, quantity - ?) WHERE product_id = ? AND batch_number = ?").run(item.quantity, item.productId, item.batchNumber);
+          
+          let remainingQtyToDeduct = stockDeduct;
+          if (item.batchNumber) {
+            const exactBatch = db.prepare("SELECT id, quantity FROM product_batches WHERE product_id = ? AND batch_number = ?").get(item.productId, item.batchNumber);
+            if (exactBatch && exactBatch.quantity > 0) {
+              const deductFromBatch = Math.min(exactBatch.quantity, remainingQtyToDeduct);
+              db.prepare("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?").run(deductFromBatch, exactBatch.id);
+              remainingQtyToDeduct -= deductFromBatch;
+            }
+          }
+          
+          // If the specific batch didn't have enough, or wasn't specified, fallback to FIFO
+          if (remainingQtyToDeduct > 0) {
+            const batches = db.prepare(`
+              SELECT * FROM product_batches 
+              WHERE product_id = ? AND quantity > 0 
+              ORDER BY 
+                CASE WHEN expiry_date != '' THEN expiry_date ELSE '9999-12-31' END ASC, 
+                created_at ASC
+            `).all(item.productId);
+
+            for (const batch of batches) {
+              if (remainingQtyToDeduct <= 0) break;
+              const deductAmt = Math.min(batch.quantity, remainingQtyToDeduct);
+              db.prepare("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?").run(deductAmt, batch.id);
+              remainingQtyToDeduct -= deductAmt;
+            }
+          }
         }
 
         db.prepare(
           "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'reduce', ?, ?)"
-        ).run(item.productId, item.quantity, `Purchase Return: ${data.returnInvoiceNumber}`);
+        ).run(item.productId, stockDeduct, `Purchase Return: ${data.returnInvoiceNumber}`);
       }
       return returnId;
     });
@@ -2072,12 +2163,12 @@ ipcMain.handle('dashboard:get-stats', async () => {
     const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
 
     const todaySales = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN 1 ELSE 0 END) as cnt FROM sales WHERE created_at LIKE ?",
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at LIKE ?",
       [`${todayStr}%`]
     );
 
     const monthlySales = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN 1 ELSE 0 END) as cnt FROM sales WHERE created_at >= ?",
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at >= ?",
       [monthStart]
     );
 
@@ -2184,13 +2275,7 @@ ipcMain.handle('reports:services', async (_e, { startDate, endDate }) => {
        FROM sales s
        LEFT JOIN users u ON s.user_id = u.id
        WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
-       AND (s.receipt_number LIKE 'SRV-%' OR EXISTS (
-         SELECT 1 FROM sale_items si 
-         LEFT JOIN products p ON si.product_id = p.id 
-         LEFT JOIN categories c ON p.category_id = c.id 
-         WHERE si.sale_id = s.id 
-         AND (LOWER(COALESCE(c.name, '')) LIKE '%service%' OR LOWER(COALESCE(c.name, '')) LIKE '%grooming%' OR si.barcode LIKE 'SRV-%')
-       ))`;
+       AND s.receipt_number LIKE 'SRV-%'`;
 
     let summaryQuery = `SELECT COUNT(*) as total_sales,
         COALESCE(SUM(subtotal_paise), 0) as total_subtotal,
@@ -2200,13 +2285,7 @@ ipcMain.handle('reports:services', async (_e, { startDate, endDate }) => {
         COALESCE(SUM(igst_paise), 0) as total_igst,
         COALESCE(SUM(grand_total_paise), 0) as total_grand
        FROM sales s WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
-       AND (s.receipt_number LIKE 'SRV-%' OR EXISTS (
-         SELECT 1 FROM sale_items si 
-         LEFT JOIN products p ON si.product_id = p.id 
-         LEFT JOIN categories c ON p.category_id = c.id 
-         WHERE si.sale_id = s.id 
-         AND (LOWER(COALESCE(c.name, '')) LIKE '%service%' OR LOWER(COALESCE(c.name, '')) LIKE '%grooming%' OR si.barcode LIKE 'SRV-%')
-       ))`;
+       AND s.receipt_number LIKE 'SRV-%'`;
 
     const params = [startDate, endDate];
     salesQuery += ` ORDER BY s.created_at DESC`;
@@ -2263,7 +2342,7 @@ ipcMain.handle('reports:hsn-summary', async (_e, { startDate, endDate }) => {
         igst = gstAmount;
       } else {
         cgst = Math.round(gstAmount / 2);
-        sgst = Math.round(gstAmount / 2);
+        sgst = gstAmount - cgst; // Bug fix #5: Prevent rounding errors (3+3 != 5)
       }
 
       map[key].total_quantity += item.quantity;
@@ -2354,8 +2433,8 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
   try {
     // Get all sale items in range with their cost prices
     const items = queryAll(
-      `SELECT si.quantity, si.unit_price_paise, si.line_total_paise,
-              CASE WHEN si.purchase_price_paise > 0 THEN si.purchase_price_paise ELSE p.purchase_price_paise END as actual_cost_paise
+      `SELECT si.quantity, si.free_quantity, si.unit_price_paise, si.line_total_paise, si.gst_percent,
+              CASE WHEN si.purchase_price_paise IS NOT NULL THEN si.purchase_price_paise ELSE p.purchase_price_paise END as actual_cost_paise
        FROM sale_items si
        JOIN sales s ON si.sale_id = s.id
        JOIN products p ON si.product_id = p.id
@@ -2367,22 +2446,20 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
     let totalCost = 0;
 
     items.forEach(item => {
-      totalRevenue += item.line_total_paise;
-      totalCost += item.actual_cost_paise * item.quantity;
+      let netRevenuePaise = item.line_total_paise;
+      if (item.gst_percent > 0) {
+        netRevenuePaise = Math.round((item.line_total_paise * 100) / (100 + item.gst_percent));
+      }
+      totalRevenue += netRevenuePaise;
+      
+      const totalQty = (item.quantity || 0) + (item.free_quantity || 0);
+      totalCost += item.actual_cost_paise * totalQty;
     });
 
-    const discountRes = queryAll(
-      `SELECT SUM(discount_paise) as total_discount
-       FROM sales
-       WHERE date(created_at) >= ? AND date(created_at) <= ?`,
-      [startDate, endDate]
-    );
-    const totalDiscount = discountRes[0]?.total_discount || 0;
-
-    totalRevenue -= totalDiscount;
+    // item.line_total_paise ALREADY has discounts subtracted during checkout.
 
     const totalProfit = totalRevenue - totalCost;
-    const profitPercent = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0;
+    const profitPercent = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(2) : 0;
 
     return {
       totalRevenuePaise: totalRevenue,
@@ -2439,14 +2516,19 @@ ipcMain.handle('reports:gstr1', async (_e, { startDate, endDate }) => {
       if (!b2cSmallMap[key]) {
         b2cSmallMap[key] = { is_inter_state: item.is_inter_state, gst_percent: item.gst_percent, place_of_supply: pos, taxable_value: 0, cgst: 0, sgst: 0, igst: 0 };
       }
-      b2cSmallMap[key].taxable_value += item.line_total_paise;
-      const gstAmount = Math.round(item.line_total_paise * item.gst_percent / 100);
+      // Bug fix #2: line_total_paise is GST-inclusive. Reverse calculate taxable value.
+      const lineTotal = item.line_total_paise;
+      const taxableValue = item.gst_percent > 0 ? Math.round((lineTotal * 100) / (100 + item.gst_percent)) : lineTotal;
+      const gstAmount = lineTotal - taxableValue;
+
+      b2cSmallMap[key].taxable_value += taxableValue;
       if (item.is_inter_state) {
         b2cSmallMap[key].igst += gstAmount;
       } else {
-        const halfGst = Math.round(gstAmount / 2);
-        b2cSmallMap[key].cgst += halfGst;
-        b2cSmallMap[key].sgst += halfGst;
+        const cgst = Math.round(gstAmount / 2);
+        const sgst = gstAmount - cgst;
+        b2cSmallMap[key].cgst += cgst;
+        b2cSmallMap[key].sgst += sgst;
       }
     }
     const b2cSmall = Object.values(b2cSmallMap);
