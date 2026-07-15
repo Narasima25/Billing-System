@@ -193,7 +193,10 @@ const BillingModule = (() => {
               </div>
               <div class="checkout-row total">
                 <span class="label">Grand Total</span>
-                <span class="value" id="billing-grand-total">₹0.00</span>
+                <div style="display:flex; align-items:center; justify-content:flex-end;">
+                  <span style="color:var(--accent-primary); font-weight:700; margin-right:2px; font-size:24px;">₹</span>
+                  <input type="number" id="billing-grand-total" class="form-input" style="font-size:24px; font-weight:700; color:var(--accent-primary); width:120px; text-align:right; padding:0; background:transparent; border:none; outline:none; box-shadow:none; -moz-appearance:textfield;" value="0.00" min="0" step="0.01">
+                </div>
               </div>
             </div>
 
@@ -374,6 +377,8 @@ const BillingModule = (() => {
         updateTotals();
       } else if (e.target.id === 'billing-applied-coupon') {
         updateTotals();
+      } else if (e.target.id === 'billing-grand-total') {
+        reverseCalculateDiscount(e.target.value);
       }
     });
 
@@ -795,6 +800,31 @@ const BillingModule = (() => {
     updateTotals();
   }
 
+  function reverseCalculateDiscount(desiredTotalStr) {
+    const desiredTotal = parseFloat(desiredTotalStr) || 0;
+    const desiredTotalPaise = Math.round(desiredTotal * 100);
+    
+    let totalGrossPaise = 0;
+    cart.forEach(item => {
+      const itemDisc = item.discountPaise || 0;
+      totalGrossPaise += Math.max(0, (item.unitPricePaise * item.quantity) - itemDisc);
+    });
+
+    let appliedCouponPaise = parseRupeesToPaise(document.getElementById('billing-applied-coupon') ? document.getElementById('billing-applied-coupon').value || '0' : '0');
+
+    let requiredDiscountPaise = totalGrossPaise - desiredTotalPaise - appliedCouponPaise;
+    if (requiredDiscountPaise < 0) requiredDiscountPaise = 0;
+
+    discountMode = 'amount';
+    document.getElementById('billing-discount').value = (requiredDiscountPaise / 100).toFixed(2);
+    
+    if (document.getElementById('billing-discount-percent')) {
+      document.getElementById('billing-discount-percent').value = totalGrossPaise > 0 ? ((requiredDiscountPaise / totalGrossPaise) * 100).toFixed(2) : '0';
+    }
+
+    updateTotals();
+  }
+
   function updateTotals() {
     let totalGrossPaise = 0;
     cart.forEach(item => {
@@ -892,7 +922,11 @@ const BillingModule = (() => {
     } else {
       document.getElementById('billing-igst').textContent = formatRupees(igst);
     }
-    document.getElementById('billing-grand-total').textContent = formatRupees(Math.max(0, grandTotal));
+    
+    const grandTotalInput = document.getElementById('billing-grand-total');
+    if (document.activeElement !== grandTotalInput) {
+      grandTotalInput.value = (Math.max(0, grandTotal) / 100).toFixed(2);
+    }
     
     currentGrandTotalPaise = Math.max(0, grandTotal);
     updateLiveQR();

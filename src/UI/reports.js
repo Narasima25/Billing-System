@@ -598,7 +598,7 @@ const ReportsModule = (() => {
             <td><span class="badge ${payBadge}" style="font-size:10px;">${(s.payment_mode||'CASH').toUpperCase()}</span></td>
             <td class="fw-700 text-green">${formatRupees(s.grand_total_paise)}</td>
             <td style="text-align:right;">
-              <button class="btn btn-ghost btn-sm btn-delete-sale text-rose" title="Delete Sale" style="padding:4px; margin:0;" onclick="window.deleteReconSale(event, ${s.id})">🗑️</button>
+              ${s.is_return ? '' : `<button class="btn btn-ghost btn-sm btn-delete-sale text-rose" title="Delete Sale" style="padding:4px; margin:0;" onclick="window.deleteReconSale(event, ${s.id})">🗑️</button>`}
             </td>
           </tr>`;
         }).join('');

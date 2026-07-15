@@ -1371,7 +1371,15 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
       const sale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);
       if (!sale) throw new Error('Sale not found');
 
-      // 1. Restore inventory from sale items
+      if (!sale.is_return) {
+        const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(id);
+        const hasReturns = saleItems.some(item => (item.returned_quantity || 0) > 0);
+        if (hasReturns) {
+          throw new Error('Cannot delete this sale because items have been returned. Please delete the return receipt first.');
+        }
+      }
+
+      // 1. Restore inventory from sale items (deducts if it's a return sale because item.quantity is negative)
       const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(id);
       for (const item of saleItems) {
         const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(item.product_id);
@@ -1381,8 +1389,8 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
           const freeQty = item.free_quantity || 0;
           const totalQuantityToRestore = item.quantity + freeQty;
 
-          if (totalQuantityToRestore > 0) {
-            // Restore product stock
+          if (totalQuantityToRestore !== 0) {
+            // Restore product stock (adds if positive, deducts if negative)
             db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.product_id);
 
             // Restore batch quantity if applicable
@@ -1391,9 +1399,25 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
             }
 
             // Log inventory adjustment
+            const adjType = totalQuantityToRestore > 0 ? 'add' : 'reduce';
             db.prepare(
-              "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, 'add', ?, ?)"
-            ).run(item.product_id, totalQuantityToRestore, `Sale Deleted: ${sale.receipt_number}`);
+              "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, ?, ?, ?)"
+            ).run(item.product_id, Math.abs(totalQuantityToRestore), `Sale Deleted: ${sale.receipt_number}`);
+          }
+        }
+      }
+
+      // 1.5 Reverse returned_quantity on original sale if deleting a return
+      if (sale.is_return === 1 && sale.original_receipt_number) {
+        const originalSale = db.prepare("SELECT id FROM sales WHERE receipt_number = ?").get(sale.original_receipt_number);
+        if (originalSale) {
+          for (const item of saleItems) {
+            const qtyReturned = Math.abs(item.quantity);
+            if (item.batch_id) {
+              db.prepare("UPDATE sale_items SET returned_quantity = MAX(0, returned_quantity - ?) WHERE sale_id = ? AND product_id = ? AND batch_id = ?").run(qtyReturned, originalSale.id, item.product_id, item.batch_id);
+            } else {
+              db.prepare("UPDATE sale_items SET returned_quantity = MAX(0, returned_quantity - ?) WHERE sale_id = ? AND product_id = ?").run(qtyReturned, originalSale.id, item.product_id);
+            }
           }
         }
       }
