@@ -1024,6 +1024,38 @@ ipcMain.handle('customers:update-joined-date', async (_e, { phone, dateStr }) =>
   }
 });
 
+ipcMain.handle('customers:update', async (_e, { id, name, phone_number, old_phone }) => {
+  try {
+    if (phone_number !== old_phone) {
+      // Check if new phone number exists
+      const existing = queryOne("SELECT id FROM customers WHERE phone_number = ? AND id != ?", [phone_number, id]);
+      if (existing) return { success: false, error: 'Phone number already exists for another customer' };
+    }
+    
+    runSql("UPDATE customers SET name = ?, phone_number = ?, updated_at = datetime('now','localtime') WHERE id = ?", [name, phone_number, id]);
+    
+    // If phone changed, also update sales table to keep history linked
+    if (phone_number !== old_phone) {
+      runSql("UPDATE sales SET customer_phone = ?, customer_name = ? WHERE customer_phone = ?", [phone_number, name, old_phone]);
+    } else {
+      runSql("UPDATE sales SET customer_name = ? WHERE customer_phone = ?", [name, old_phone]);
+    }
+    
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('customers:delete', async (_e, id) => {
+  try {
+    runSql("DELETE FROM customers WHERE id = ?", [id]);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('billing:get-next-receipt-number', async (_e, dateStr) => {
   try {
     const dateObj = dateStr ? new Date(dateStr) : new Date();
@@ -1070,7 +1102,7 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
         const totalQuantityToDeduct = item.quantity + freeQuantity;
         const product = db.prepare("SELECT p.stock_quantity, p.barcode, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ? AND p.is_active = 1").get(item.productId);
         if (!product) throw new Error(`Product ${item.productName} not found`);
-        const isService = (product.category_name || '').toLowerCase().includes('service') || (product.category_name || '').toLowerCase().includes('grooming') || (product.barcode || '').startsWith('SRV-');
+        const isService = (product.category_name || '').toLowerCase().includes('service') || (product.barcode || '').startsWith('SRV-');
         item._isService = isService;
         if (!isService && product.stock_quantity < totalQuantityToDeduct) {
           throw new Error(`Insufficient stock for ${item.productName} (available: ${product.stock_quantity})`);
@@ -1438,9 +1470,10 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
             const grandTotal = sale.grand_total_paise || 0;
 
             // Reverse: remove earned reward, refund applied coupon, reduce lifetime spend
+            const actualSpent = Math.max(0, grandTotal - appliedCoupon);
             db.prepare(
               "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = MAX(0, total_lifetime_spent_paise - ?), updated_at = datetime('now','localtime') WHERE id = ?"
-            ).run(rewardEarned, appliedCoupon, grandTotal, cust.id);
+            ).run(rewardEarned, appliedCoupon, actualSpent, cust.id);
           }
         }
 
@@ -1601,9 +1634,10 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
 
         const cust = db.prepare("SELECT id, coupon_balance_paise FROM customers WHERE phone_number = ?").get(originalSale.customer_phone);
         if (cust) {
+          const actualRefundSpent = Math.max(0, rawRefundGrandTotal - couponToRefund);
           db.prepare(
             "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = MAX(0, total_lifetime_spent_paise - ?), updated_at = datetime('now','localtime') WHERE id = ?"
-          ).run(rewardToReverse, couponToRefund, rawRefundGrandTotal, cust.id);
+          ).run(rewardToReverse, couponToRefund, actualRefundSpent, cust.id);
         }
       }
 
@@ -1632,7 +1666,7 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
         );
 
         const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(originalItem.product_id);
-        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (product.category_name || '').toLowerCase().includes('grooming') || (originalItem.barcode || '').startsWith('SRV-'));
+        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (originalItem.barcode || '').startsWith('SRV-'));
 
         if (!isService && totalQuantityToRestore > 0) {
           db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, originalItem.product_id);

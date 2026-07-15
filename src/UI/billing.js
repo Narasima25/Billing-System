@@ -429,8 +429,10 @@ const BillingModule = (() => {
         } else {
           infoDiv.style.display = 'none';
           nameInput.style.display = 'none';
-          couponInput.value = '';
-          updateTotals(); // in case they cleared phone
+          if (couponInput.value !== '') {
+            couponInput.value = '';
+            updateTotals(); // in case they cleared phone
+          }
         }
       });
     }
@@ -521,7 +523,7 @@ const BillingModule = (() => {
           resultsDiv.innerHTML = `<div class="customer-result-item text-muted">No products found</div>`;
         } else {
           resultsDiv.innerHTML = products.map((p, idx) => {
-            const isService = (p.category_name || '').toLowerCase().includes('service') || (p.category_name || '').toLowerCase().includes('grooming') || (p.barcode || '').startsWith('SRV-');
+            const isService = (p.category_name || '').toLowerCase().includes('service') || (p.barcode || '').startsWith('SRV-');
             const isOOS = !isService && p.stock_quantity <= 0;
             const stockDisplay = isService ? '' : `<div class="text-sm ${isOOS ? 'text-rose' : 'text-green'}" style="margin-top:2px;">Stock: ${p.stock_quantity}</div>`;
             return `<div class="customer-result-item" data-barcode="${p.barcode}" data-index="${idx}" style="display:flex; justify-content:space-between; align-items:center; ${isOOS ? 'opacity:0.6;' : ''}">
@@ -684,7 +686,7 @@ const BillingModule = (() => {
       // Check stock
       const existing = cart.find(c => c.barcode === barcode);
       const cartQty = existing ? existing.quantity : 0;
-      const isService = (product.category_name || '').toLowerCase().includes('service') || (product.category_name || '').toLowerCase().includes('grooming') || (product.barcode || '').startsWith('SRV-');
+      const isService = (product.category_name || '').toLowerCase().includes('service') || (product.barcode || '').startsWith('SRV-');
 
       if (!isService && product.stock_quantity <= 0) {
         flash.innerHTML = `<div class="oos-alert">🚫 <strong>${product.product_name}</strong> is <strong>OUT OF STOCK</strong></div>`;

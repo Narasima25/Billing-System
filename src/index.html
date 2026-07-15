@@ -1034,6 +1034,30 @@
     </div>
   </div>
 
+  <!-- Edit Customer Modal -->
+  <div class="modal-overlay" id="modal-edit-customer">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title"><i data-lucide="edit-3"></i> Edit Customer</div>
+        <button class="modal-close" onclick="closeModal('modal-edit-customer')">✕</button>
+      </div>
+      <input type="hidden" id="edit-customer-id">
+      <input type="hidden" id="edit-customer-old-phone">
+      <div class="form-group">
+        <label>Customer Name</label>
+        <input type="text" id="edit-customer-name" class="form-input" placeholder="Enter Name">
+      </div>
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="text" id="edit-customer-phone" class="form-input" placeholder="10 Digit Phone Number" maxlength="10" oninput="this.value = this.value.replace(/\\D/g, '')">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-edit-customer')">Cancel</button>
+        <button class="btn btn-primary" onclick="if(typeof CustomersModule !== 'undefined') CustomersModule.saveCustomerEdit()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Loyalty Confirm Modal -->
   <div class="modal-overlay" id="modal-loyalty-confirm">
     <div class="modal-box" style="width: 400px;">

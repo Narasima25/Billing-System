@@ -223,6 +223,12 @@ const CustomersModule = (() => {
           <button class="btn btn-ghost btn-sm" onclick="CustomersModule.openWhatsAppUpdate('${phone}', '${name.replace(/'/g, "\\'").replace(/"/g, "&quot;")}')" title="Send WhatsApp Update">
             <i data-lucide="message-circle"></i> Message
           </button>
+          <button class="btn btn-ghost btn-sm text-teal" onclick="CustomersModule.openEditModal(${c.id}, '${phone}', '${name.replace(/'/g, "\\'").replace(/"/g, "&quot;")}')" title="Edit Customer">
+            <i data-lucide="edit-3"></i> Edit
+          </button>
+          <button class="btn btn-ghost btn-sm text-rose" onclick="CustomersModule.deleteCustomer(${c.id})" title="Delete Customer">
+            <i data-lucide="trash-2"></i> Delete
+          </button>
         </td>
       </tr>
     `}).join('');
@@ -381,7 +387,57 @@ const CustomersModule = (() => {
     }
   }
 
-  return { init, viewHistory, openWhatsAppUpdate, viewReceiptPreview, updateJoinedDate, deleteSale };
+  function openEditModal(id, phone, name) {
+    document.getElementById('edit-customer-id').value = id;
+    document.getElementById('edit-customer-old-phone').value = phone;
+    document.getElementById('edit-customer-phone').value = phone;
+    document.getElementById('edit-customer-name').value = name === 'Unknown' ? '' : name;
+    openModal('modal-edit-customer');
+  }
+
+  async function saveCustomerEdit() {
+    const id = parseInt(document.getElementById('edit-customer-id').value);
+    const oldPhone = document.getElementById('edit-customer-old-phone').value;
+    const phone = document.getElementById('edit-customer-phone').value.trim();
+    const name = document.getElementById('edit-customer-name').value.trim();
+    
+    if (phone.length !== 10) {
+      showToast('Phone number must be exactly 10 digits', 'warning');
+      return;
+    }
+    
+    try {
+      const result = await window.api.customers.update({ id, name, phone_number: phone, old_phone: oldPhone });
+      if (result.success) {
+        showToast('Customer updated successfully', 'success');
+        closeModal('modal-edit-customer');
+        loadCustomers();
+      } else {
+        showToast(result.error || 'Failed to update customer', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error updating customer', 'error');
+    }
+  }
+  
+  async function deleteCustomer(id) {
+    if (!confirm('Are you sure you want to completely delete this customer? This will NOT delete their sales history, but their loyalty points will be lost. This cannot be undone.')) return;
+    try {
+      const result = await window.api.customers.delete(id);
+      if (result.success) {
+        showToast('Customer deleted successfully', 'success');
+        loadCustomers();
+      } else {
+        showToast(result.error || 'Failed to delete customer', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting customer', 'error');
+    }
+  }
+
+  return { init, viewHistory, openWhatsAppUpdate, viewReceiptPreview, updateJoinedDate, deleteSale, openEditModal, saveCustomerEdit, deleteCustomer };
 })();
 
 // For global access (e.g. from onclick attributes)

@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld('api', {
     sendUpdate: (data) => ipcRenderer.invoke('customers:send-update', data),
     sendBulkUpdate: (data) => ipcRenderer.invoke('customers:send-bulk-update', data),
     updateJoinedDate: (data) => ipcRenderer.invoke('customers:update-joined-date', data),
+    update: (data) => ipcRenderer.invoke('customers:update', data),
+    delete: (id) => ipcRenderer.invoke('customers:delete', id),
   },
 
   purchases: {
