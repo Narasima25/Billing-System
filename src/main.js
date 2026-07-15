@@ -1079,35 +1079,17 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
       }
 
       // 2. Global Totals (to calculate Loyalty)
-      let globalSubtotal = 0;
-      let globalCgst = 0;
-      let globalSgst = 0;
-      let globalIgst = 0;
-      let globalItemTotal = 0;
+      let totalGrossPaise = 0;
       
       for (const item of items) {
         const itemDiscount = parseInt(item.discountPaise) || 0;
-        const lineTotal = Math.max(0, (item.unitPricePaise * item.quantity) - itemDiscount);
-        globalItemTotal += (item.unitPricePaise * item.quantity);
-
-        if (item.gstPercent > 0) {
-          const taxableValue = Math.round((lineTotal * 100) / (100 + item.gstPercent));
-          const gstAmount = lineTotal - taxableValue;
-          globalSubtotal += taxableValue;
-          if (isInterState) {
-            globalIgst += gstAmount;
-          } else {
-            const halfGst = Math.round(gstAmount / 2);
-            globalCgst += halfGst;
-            globalSgst += (gstAmount - halfGst);
-          }
-        } else {
-          globalSubtotal += lineTotal;
-        }
+        const itemGross = Math.max(0, (item.unitPricePaise * item.quantity) - itemDiscount);
+        item._itemGross = itemGross; // cache it
+        totalGrossPaise += itemGross;
       }
 
       const globalDiscount = discountPaise || 0;
-      let globalGrandTotal = globalSubtotal + globalCgst + globalSgst + globalIgst - globalDiscount;
+      let globalGrandTotal = totalGrossPaise - globalDiscount;
 
       // 3. Loyalty Logic on Global Grand Total
       let customerId = null;
@@ -1153,23 +1135,23 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
       const cartsToProcess = [];
       if (productCart.length > 0) {
         let pTotal = 0;
-        productCart.forEach(item => { pTotal += (item.unitPricePaise * item.quantity); });
-        const pDiscount = Math.round((pTotal / globalItemTotal) * globalDiscount) || 0;
-        const pCoupon = Math.round((pTotal / globalItemTotal) * actualAppliedCoupon) || 0;
-        cartsToProcess.push({ items: productCart, discount: pDiscount, coupon: pCoupon, customReceiptNumber: null, isServiceCart: false });
+        productCart.forEach(item => { pTotal += item._itemGross; });
+        const pDiscount = totalGrossPaise > 0 ? Math.round((pTotal / totalGrossPaise) * globalDiscount) : 0;
+        const pCoupon = totalGrossPaise > 0 ? Math.round((pTotal / totalGrossPaise) * actualAppliedCoupon) : 0;
+        cartsToProcess.push({ items: productCart, discount: pDiscount, coupon: pCoupon, customReceiptNumber: null, isServiceCart: false, cartGross: pTotal });
       }
 
       if (serviceCart.length > 0) {
         let sTotal = 0;
-        serviceCart.forEach(item => { sTotal += (item.unitPricePaise * item.quantity); });
-        let finalSDiscount = Math.round((sTotal / globalItemTotal) * globalDiscount) || 0;
-        let finalSCoupon = Math.round((sTotal / globalItemTotal) * actualAppliedCoupon) || 0;
+        serviceCart.forEach(item => { sTotal += item._itemGross; });
+        let finalSDiscount = totalGrossPaise > 0 ? Math.round((sTotal / totalGrossPaise) * globalDiscount) : 0;
+        let finalSCoupon = totalGrossPaise > 0 ? Math.round((sTotal / totalGrossPaise) * actualAppliedCoupon) : 0;
         
         if (productCart.length > 0) {
            finalSDiscount = globalDiscount - cartsToProcess[0].discount;
            finalSCoupon = actualAppliedCoupon - cartsToProcess[0].coupon;
         }
-        cartsToProcess.push({ items: serviceCart, discount: finalSDiscount, coupon: finalSCoupon, customReceiptNumber: `SRV-${Date.now()}`, isServiceCart: true });
+        cartsToProcess.push({ items: serviceCart, discount: finalSDiscount, coupon: finalSCoupon, customReceiptNumber: `SRV-${Date.now()}`, isServiceCart: true, cartGross: sTotal });
       }
 
       // 5. Process Each Cart
@@ -1198,13 +1180,17 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
         let totalSgstPaise = 0;
         let totalIgstPaise = 0;
 
+        const cartGlobalDiscount = cart.discount + cart.coupon;
+
         for (const item of cart.items) {
-          const itemDiscount = parseInt(item.discountPaise) || 0;
-          const lineTotal = Math.max(0, (item.unitPricePaise * item.quantity) - itemDiscount);
+          const proportion = cart.cartGross > 0 ? (item._itemGross / cart.cartGross) : 0;
+          const itemGlobalDiscount = Math.round(proportion * cartGlobalDiscount);
+          item._itemGlobalDiscount = itemGlobalDiscount; // cache it for sale_items insertion
+          const lineTotalAfterGlobalDisc = Math.max(0, item._itemGross - itemGlobalDiscount);
 
           if (item.gstPercent > 0) {
-            const taxableValue = Math.round((lineTotal * 100) / (100 + item.gstPercent));
-            const gstAmount = lineTotal - taxableValue;
+            const taxableValue = Math.round((lineTotalAfterGlobalDisc * 100) / (100 + item.gstPercent));
+            const gstAmount = lineTotalAfterGlobalDisc - taxableValue;
             subtotalPaise += taxableValue;
             if (isInterState) {
               totalIgstPaise += gstAmount;
@@ -1214,11 +1200,11 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
               totalSgstPaise += (gstAmount - halfGst);
             }
           } else {
-            subtotalPaise += lineTotal;
+            subtotalPaise += lineTotalAfterGlobalDisc;
           }
         }
 
-        const grandTotalPaise = subtotalPaise + totalCgstPaise + totalSgstPaise + totalIgstPaise - cart.discount - cart.coupon;
+        const grandTotalPaise = subtotalPaise + totalCgstPaise + totalSgstPaise + totalIgstPaise;
         const receiptNumber = cart.customReceiptNumber || generateReceiptNumber(db, invoiceDate);
         
         // Only report the reward earned on the primary cart (e.g. the first one) to not duplicate on UI
@@ -1288,9 +1274,12 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
               remainingQuantityToDeduct = 0;
             }
 
-            const discount = parseInt(item.discountPaise) || 0;
+            const baseItemDiscount = parseInt(item.discountPaise) || 0;
+            const globalAllocatedDiscount = item._itemGlobalDiscount || 0;
+            const totalItemDiscount = baseItemDiscount + globalAllocatedDiscount;
+            
             const isFirstBatch = (qtyToDeductFromBatch === totalQuantityToDeduct) || (remainingQuantityToDeduct === (totalQuantityToDeduct - qtyToDeductFromBatch));
-            const appliedDiscount = isFirstBatch ? discount : 0;
+            const appliedDiscount = isFirstBatch ? totalItemDiscount : 0;
             const appliedFreeQty = isFirstBatch ? freeQuantity : 0;
 
             const billedQtyForBatch = Math.max(0, qtyToDeductFromBatch - appliedFreeQty);

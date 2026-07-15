@@ -972,14 +972,24 @@ const SuppliersModule = (() => {
 
     let sumOfItemTotalsPaise = 0;
     let sumOfSchemeDiscountPaise = 0;
+    let autoGstPaise = 0;
     pendingPurchaseItems.forEach(item => {
       let baseVal = item.basePricePaise || 0;
-      let taxableVal = (baseVal * item.quantity) - (item.schemeDiscountPaise || 0);
-      sumOfItemTotalsPaise += Math.max(0, taxableVal);
+      let taxableVal = Math.max(0, (baseVal * item.quantity) - (item.schemeDiscountPaise || 0));
+      sumOfItemTotalsPaise += taxableVal;
       sumOfSchemeDiscountPaise += (item.schemeDiscountPaise || 0);
+      
+      let cgstVal = taxableVal * (item.cgstPercent / 100);
+      let sgstVal = taxableVal * (item.sgstPercent / 100);
+      autoGstPaise += Math.round(cgstVal + sgstVal);
     });
 
     const gstInput = document.getElementById('purchase-summary-gst');
+    
+    if (gstInput.dataset.edited !== 'true') {
+      gstInput.value = (autoGstPaise / 100).toFixed(2);
+    }
+    
     let explicitGstVal = parseFloat(gstInput.value);
     if (isNaN(explicitGstVal)) explicitGstVal = 0;
     const finalGstPaise = Math.round(explicitGstVal * 100);

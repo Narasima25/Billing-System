@@ -792,46 +792,21 @@ const BillingModule = (() => {
   }
 
   function updateTotals() {
-    let subtotal = 0;
-    let cgst = 0;
-    let sgst = 0;
-    let igst = 0;
-
-    const isInterState = document.getElementById('chk-inter-state') ? document.getElementById('chk-inter-state').checked : false;
-
+    let totalGrossPaise = 0;
     cart.forEach(item => {
       const discount = item.discountPaise || 0;
-      const lineTotal = Math.max(0, (item.unitPricePaise * item.quantity) - discount);
-      
-      if (item.gstPercent > 0) {
-        // GST is inclusive in MRP. Reverse calculate taxable value.
-        const taxableValue = Math.round((lineTotal * 100) / (100 + item.gstPercent));
-        const itemGst = lineTotal - taxableValue;
-
-        if (isInterState) {
-          igst += itemGst;
-        } else {
-          const halfGst = Math.round(itemGst / 2);
-          cgst += halfGst;
-          sgst += (itemGst - halfGst);
-        }
-        subtotal += taxableValue;
-      } else {
-        subtotal += lineTotal;
-      }
+      totalGrossPaise += Math.max(0, (item.unitPricePaise * item.quantity) - discount);
     });
-
-    const preDiscountTotalPaise = subtotal + cgst + sgst + igst;
 
     if (discountMode === 'percent') {
       const pct = parseFloat(document.getElementById('billing-discount-percent') ? document.getElementById('billing-discount-percent').value : '0') || 0;
-      const amtPaise = Math.round((preDiscountTotalPaise * pct) / 100);
+      const amtPaise = Math.round((totalGrossPaise * pct) / 100);
       document.getElementById('billing-discount').value = (amtPaise / 100).toFixed(2);
     } else {
       const amtPaise = parseRupeesToPaise(document.getElementById('billing-discount').value || '0');
       if (document.getElementById('billing-discount-percent')) {
-        if (preDiscountTotalPaise > 0) {
-          document.getElementById('billing-discount-percent').value = ((amtPaise / preDiscountTotalPaise) * 100).toFixed(2);
+        if (totalGrossPaise > 0) {
+          document.getElementById('billing-discount-percent').value = ((amtPaise / totalGrossPaise) * 100).toFixed(2);
         } else {
           document.getElementById('billing-discount-percent').value = '0';
         }
@@ -840,10 +815,9 @@ const BillingModule = (() => {
 
     const discountPaise = parseRupeesToPaise(document.getElementById('billing-discount').value || '0');
     let appliedCouponPaise = parseRupeesToPaise(document.getElementById('billing-applied-coupon') ? document.getElementById('billing-applied-coupon').value || '0' : '0');
-    const totalBeforeCoupon = preDiscountTotalPaise - discountPaise;
-
+    
     const isB2B = document.getElementById('chk-b2b') ? document.getElementById('chk-b2b').checked : false;
-    const isB2CSmall = !isB2B && (totalBeforeCoupon <= 25000000); // <= 2.5L
+    const isB2CSmall = !isB2B && ((totalGrossPaise - discountPaise) <= 25000000); // <= 2.5L
 
     const loyaltySection = document.getElementById('loyalty-section');
     if (loyaltySection) {
@@ -862,7 +836,42 @@ const BillingModule = (() => {
       }
     }
 
-    const grandTotal = totalBeforeCoupon - appliedCouponPaise;
+    const totalGlobalDiscountPaise = discountPaise + appliedCouponPaise;
+
+    let subtotal = 0;
+    let cgst = 0;
+    let sgst = 0;
+    let igst = 0;
+
+    const isInterState = document.getElementById('chk-inter-state') ? document.getElementById('chk-inter-state').checked : false;
+
+    cart.forEach(item => {
+      const itemDiscount = item.discountPaise || 0;
+      const itemGross = Math.max(0, (item.unitPricePaise * item.quantity) - itemDiscount);
+      
+      const proportion = totalGrossPaise > 0 ? (itemGross / totalGrossPaise) : 0;
+      const itemGlobalDiscount = Math.round(proportion * totalGlobalDiscountPaise);
+      const lineTotalAfterGlobalDisc = Math.max(0, itemGross - itemGlobalDiscount);
+
+      if (item.gstPercent > 0) {
+        // GST is inclusive in MRP. Reverse calculate taxable value.
+        const taxableValue = Math.round((lineTotalAfterGlobalDisc * 100) / (100 + item.gstPercent));
+        const itemGst = lineTotalAfterGlobalDisc - taxableValue;
+
+        if (isInterState) {
+          igst += itemGst;
+        } else {
+          const halfGst = Math.round(itemGst / 2);
+          cgst += halfGst;
+          sgst += (itemGst - halfGst);
+        }
+        subtotal += taxableValue;
+      } else {
+        subtotal += lineTotalAfterGlobalDisc;
+      }
+    });
+
+    const grandTotal = subtotal + cgst + sgst + igst;
 
     const rowCoupon = document.getElementById('row-coupon-discount');
     if (appliedCouponPaise > 0) {
