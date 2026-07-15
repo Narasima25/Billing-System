@@ -1368,83 +1368,93 @@ ipcMain.handle('billing:get-last-sale', async () => {
 ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
   try {
     const deleteSaleTransaction = db.transaction((id) => {
-      const sale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);
-      if (!sale) throw new Error('Sale not found');
+      let mainReceiptNumber = '';
 
-      if (!sale.is_return) {
-        const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(id);
-        const hasReturns = saleItems.some(item => (item.returned_quantity || 0) > 0);
-        if (hasReturns) {
-          throw new Error('Cannot delete this sale because items have been returned. Please delete the return receipt first.');
+      const doDelete = (saleId, isMain) => {
+        const sale = db.prepare("SELECT * FROM sales WHERE id = ?").get(saleId);
+        if (!sale) return;
+
+        if (isMain) {
+          mainReceiptNumber = sale.receipt_number;
         }
-      }
 
-      // 1. Restore inventory from sale items (deducts if it's a return sale because item.quantity is negative)
-      const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(id);
-      for (const item of saleItems) {
-        const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(item.product_id);
-        const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (item.barcode || '').startsWith('SRV-'));
+        if (!sale.is_return) {
+          // Find any return receipts associated with this sale and delete them first
+          const returns = db.prepare("SELECT id FROM sales WHERE original_receipt_number = ? AND is_return = 1").all(sale.receipt_number);
+          for (const ret of returns) {
+            doDelete(ret.id, false);
+          }
+        }
 
-        if (!isService) {
-          const freeQty = item.free_quantity || 0;
-          const totalQuantityToRestore = item.quantity + freeQty;
+        // 1. Restore inventory from sale items (deducts if it's a return sale because item.quantity is negative)
+        const saleItems = db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(saleId);
+        for (const item of saleItems) {
+          const product = db.prepare("SELECT c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?").get(item.product_id);
+          const isService = product && ((product.category_name || '').toLowerCase().includes('service') || (item.barcode || '').startsWith('SRV-'));
 
-          if (totalQuantityToRestore !== 0) {
-            // Restore product stock (adds if positive, deducts if negative)
-            db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.product_id);
+          if (!isService) {
+            const freeQty = item.free_quantity || 0;
+            const totalQuantityToRestore = item.quantity + freeQty;
 
-            // Restore batch quantity if applicable
-            if (item.batch_id) {
-              db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.batch_id);
+            if (totalQuantityToRestore !== 0) {
+              // Restore product stock (adds if positive, deducts if negative)
+              db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.product_id);
+
+              // Restore batch quantity if applicable
+              if (item.batch_id) {
+                db.prepare("UPDATE product_batches SET quantity = quantity + ? WHERE id = ?").run(totalQuantityToRestore, item.batch_id);
+              }
+
+              // Log inventory adjustment
+              const adjType = totalQuantityToRestore > 0 ? 'add' : 'reduce';
+              db.prepare(
+                "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, ?, ?, ?)"
+              ).run(item.product_id, adjType, Math.abs(totalQuantityToRestore), `Sale Deleted: ${sale.receipt_number}`);
             }
+          }
+        }
 
-            // Log inventory adjustment
-            const adjType = totalQuantityToRestore > 0 ? 'add' : 'reduce';
+        // 1.5 Reverse returned_quantity on original sale if deleting a return
+        if (sale.is_return === 1 && sale.original_receipt_number) {
+          const originalSale = db.prepare("SELECT id FROM sales WHERE receipt_number = ?").get(sale.original_receipt_number);
+          if (originalSale) {
+            for (const item of saleItems) {
+              const qtyReturned = Math.abs(item.quantity);
+              if (item.batch_id) {
+                db.prepare("UPDATE sale_items SET returned_quantity = MAX(0, returned_quantity - ?) WHERE sale_id = ? AND product_id = ? AND batch_id = ?").run(qtyReturned, originalSale.id, item.product_id, item.batch_id);
+              } else {
+                db.prepare("UPDATE sale_items SET returned_quantity = MAX(0, returned_quantity - ?) WHERE sale_id = ? AND product_id = ?").run(qtyReturned, originalSale.id, item.product_id);
+              }
+            }
+          }
+        }
+
+        // 2. Reverse loyalty rewards if customer had phone
+        if (sale.customer_phone) {
+          const cust = db.prepare("SELECT * FROM customers WHERE phone_number = ?").get(sale.customer_phone);
+          if (cust) {
+            const rewardEarned = sale.reward_earned_paise || 0;
+            const appliedCoupon = sale.applied_coupon_paise || 0;
+            const grandTotal = sale.grand_total_paise || 0;
+
+            // Reverse: remove earned reward, refund applied coupon, reduce lifetime spend
             db.prepare(
-              "INSERT INTO inventory_adjustments (product_id, adjustment_type, quantity, reason) VALUES (?, ?, ?, ?)"
-            ).run(item.product_id, Math.abs(totalQuantityToRestore), `Sale Deleted: ${sale.receipt_number}`);
+              "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = MAX(0, total_lifetime_spent_paise - ?), updated_at = datetime('now','localtime') WHERE id = ?"
+            ).run(rewardEarned, appliedCoupon, grandTotal, cust.id);
           }
         }
-      }
 
-      // 1.5 Reverse returned_quantity on original sale if deleting a return
-      if (sale.is_return === 1 && sale.original_receipt_number) {
-        const originalSale = db.prepare("SELECT id FROM sales WHERE receipt_number = ?").get(sale.original_receipt_number);
-        if (originalSale) {
-          for (const item of saleItems) {
-            const qtyReturned = Math.abs(item.quantity);
-            if (item.batch_id) {
-              db.prepare("UPDATE sale_items SET returned_quantity = MAX(0, returned_quantity - ?) WHERE sale_id = ? AND product_id = ? AND batch_id = ?").run(qtyReturned, originalSale.id, item.product_id, item.batch_id);
-            } else {
-              db.prepare("UPDATE sale_items SET returned_quantity = MAX(0, returned_quantity - ?) WHERE sale_id = ? AND product_id = ?").run(qtyReturned, originalSale.id, item.product_id);
-            }
-          }
-        }
-      }
+        // 3. Delete sale items and the sale record
+        db.prepare("DELETE FROM sale_items WHERE sale_id = ?").run(saleId);
+        db.prepare("DELETE FROM sales WHERE id = ?").run(saleId);
+      };
 
-      // 2. Reverse loyalty rewards if customer had phone
-      if (sale.customer_phone) {
-        const cust = db.prepare("SELECT * FROM customers WHERE phone_number = ?").get(sale.customer_phone);
-        if (cust) {
-          const rewardEarned = sale.reward_earned_paise || 0;
-          const appliedCoupon = sale.applied_coupon_paise || 0;
-          const grandTotal = sale.grand_total_paise || 0;
-
-          // Reverse: remove earned reward, refund applied coupon, reduce lifetime spend
-          db.prepare(
-            "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = MAX(0, total_lifetime_spent_paise - ?), updated_at = datetime('now','localtime') WHERE id = ?"
-          ).run(rewardEarned, appliedCoupon, grandTotal, cust.id);
-        }
-      }
-
-      // 3. Delete sale items and the sale record
-      db.prepare("DELETE FROM sale_items WHERE sale_id = ?").run(id);
-      db.prepare("DELETE FROM sales WHERE id = ?").run(id);
+      doDelete(id, true);
 
       // 4. Clean up related inventory adjustments
       // (Inventory adjustments for the original sale are intentionally kept to preserve accurate historical auditing. The 'add' adjustment above offsets it.)
 
-      return { success: true, receiptNumber: sale.receipt_number };
+      return { success: true, receiptNumber: mainReceiptNumber };
     });
 
     const result = deleteSaleTransaction(saleId);
@@ -1586,7 +1596,7 @@ ipcMain.handle('billing:process-return', async (_e, { originalReceiptNumber, ret
         if (appliedCoupon > 0 && originalSale.grand_total_paise > 0) {
           const refundRatio = rawRefundGrandTotal / originalSale.grand_total_paise;
           couponToRefund = Math.round(appliedCoupon * refundRatio);
-          finalRefundGrandTotal -= couponToRefund; // Coupon value was just a discount, not cash to refund
+          // Removed finalRefundGrandTotal -= couponToRefund; because rawRefundGrandTotal already accounts for the coupon.
         }
 
         const cust = db.prepare("SELECT id, coupon_balance_paise FROM customers WHERE phone_number = ?").get(originalSale.customer_phone);
