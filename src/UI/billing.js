@@ -310,19 +310,28 @@ const BillingModule = (() => {
 
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const currentTime = Date.now();
-        // Hardware scanners are extremely fast (<20ms per char). Humans are typically >50ms.
-        if (currentTime - lastKeyTime > 40) {
+        // Hardware scanners can sometimes take up to 50-80ms per char.
+        if (currentTime - lastKeyTime > 150) {
           scanBuffer = '';
         }
         lastKeyTime = currentTime;
 
         scanBuffer += e.key;
         
-        // Only reset the timeout occasionally during a burst to save CPU
-        if (scanBuffer.length === 1) {
-          clearTimeout(scanTimer);
-          scanTimer = setTimeout(() => { scanBuffer = ''; }, 100);
-        }
+        clearTimeout(scanTimer);
+        scanTimer = setTimeout(async () => {
+          let barcode = scanBuffer;
+          if (scanner && document.activeElement === scanner && scanner.value.trim().length > 0) {
+            barcode = scanner.value.trim();
+          }
+          if (barcode && barcode.length >= 3) {
+            scanBuffer = '';
+            if (scanner) scanner.value = '';
+            await handleScan(barcode);
+          } else {
+            scanBuffer = '';
+          }
+        }, 300);
       }
     });
 

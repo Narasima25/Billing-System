@@ -1278,7 +1278,7 @@ ipcMain.handle('billing:checkout', async (_e, { cartItems, paymentMode, discount
           } else {
             subtotalPaise += lineTotalAfterGlobalDisc;
           }
-        }
+        });
 
         const grandTotalPaise = subtotalPaise + totalCgstPaise + totalSgstPaise + totalIgstPaise;
         const receiptNumber = cart.customReceiptNumber || generateReceiptNumber(db, invoiceDate, cart.isServiceCart);
@@ -2615,7 +2615,8 @@ ipcMain.handle('backup:export', async () => {
     // Checkpoint WAL to ensure backup is consistent
     try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch(e) { /* non-fatal */ }
 
-    await db.backup(backupTempPath);
+    // Use robust fs.copyFileSync like performAutoBackup to avoid SQLITE_BUSY
+    fs.copyFileSync(dbPath, backupTempPath);
     // Read the backup file
     const data = fs.readFileSync(backupTempPath);
     const base64 = data.toString('base64');
