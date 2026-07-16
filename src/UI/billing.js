@@ -587,8 +587,29 @@ const BillingModule = (() => {
       }, 300);
     });
 
-    manualSearch.addEventListener('keydown', (e) => {
+    manualSearch.addEventListener('keydown', async (e) => {
       const resultsDiv = document.getElementById('billing-manual-results');
+      
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        
+        if (resultsDiv.classList.contains('show')) {
+          const items = resultsDiv.querySelectorAll('.customer-result-item[data-barcode]');
+          if (manualSelectedIndex >= 0 && manualSelectedIndex < items.length) {
+            items[manualSelectedIndex].click();
+            return;
+          }
+        }
+        
+        const val = manualSearch.value.trim();
+        if (val.length >= 3) {
+          resultsDiv.classList.remove('show');
+          manualSearch.value = '';
+          await handleScan(val);
+        }
+        return;
+      }
+
       if (!resultsDiv.classList.contains('show')) return;
       
       const items = resultsDiv.querySelectorAll('.customer-result-item[data-barcode]');
@@ -602,11 +623,6 @@ const BillingModule = (() => {
         e.preventDefault();
         manualSelectedIndex = (manualSelectedIndex - 1 + items.length) % items.length;
         updateManualSelection(items);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (manualSelectedIndex >= 0 && manualSelectedIndex < items.length) {
-          items[manualSelectedIndex].click();
-        }
       }
     });
 

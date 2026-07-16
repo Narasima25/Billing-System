@@ -208,15 +208,20 @@ const SettingsModule = (() => {
     try {
       const result = await window.api.backup.export();
       if (result.success) {
-        // Convert base64 to proper binary Blob
-        const res = await fetch(`data:application/octet-stream;base64,${result.data}`);
-        const blob = await res.blob();
+        // Convert base64 to proper binary Blob without hitting data URI length limits
+        const byteCharacters = atob(result.data);
+        const byteNumbers = new Uint8Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const blob = new Blob([byteNumbers], {type: 'application/octet-stream'});
         
         // Download as file
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `petstore-backup-${getToday()}.bak`;
+        const todayStr = new Date().toISOString().split('T')[0];
+        a.download = `petstore-backup-${todayStr}.bak`;
         a.click();
         URL.revokeObjectURL(url);
 
@@ -226,6 +231,7 @@ const SettingsModule = (() => {
         showToast(result.error || 'Backup failed', 'error');
       }
     } catch (err) {
+      console.error('Backup error:', err);
       showToast('Backup error', 'error');
     }
   }
