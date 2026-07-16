@@ -259,37 +259,9 @@ const BillingModule = (() => {
 
     function isIgnoredInput() {
       const el = document.activeElement;
-      if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'SELECT')) return false;
-      if (el === scanner) return true; // Scanner handles its own events now
+      if (!el || el.tagName !== 'INPUT' && el.tagName !== 'SELECT') return false;
+      if (el === scanner) return false; // scanner input is always allowed
       return ignoredInputIds.has(el.id);
-    }
-
-    if (scanner) {
-      let scannerInputTimer = null;
-      
-      scanner.addEventListener('input', () => {
-        clearTimeout(scannerInputTimer);
-        scannerInputTimer = setTimeout(async () => {
-          const barcode = scanner.value.trim();
-          if (barcode.length >= 3) {
-            scanner.value = '';
-            await handleScan(barcode);
-          }
-        }, 400); // 400ms debounce for hardware scanners or mobile virtual keyboards
-      });
-
-      scanner.addEventListener('keydown', async (e) => {
-        if (e.key === 'Enter' || e.keyCode === 13) {
-          e.preventDefault();
-          e.stopPropagation();
-          clearTimeout(scannerInputTimer);
-          const barcode = scanner.value.trim();
-          if (barcode.length >= 3) {
-            scanner.value = '';
-            await handleScan(barcode);
-          }
-        }
-      });
     }
 
     document.addEventListener('keydown', async (e) => {
