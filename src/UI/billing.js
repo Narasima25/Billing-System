@@ -16,12 +16,28 @@ const BillingModule = (() => {
   let invInput = null;
   let isInvoiceNumberEdited = false;
 
+  let cachedShopUpiId = null;
+  let cachedStoreName = null;
+  let cachedShopStateCode = null;
+  let settingsCached = false;
+
+  async function cacheSettings() {
+    if (!settingsCached) {
+      cachedShopUpiId = await window.api.settings.get('shop_upi_id');
+      cachedStoreName = (await window.api.settings.get('store_name')) || 'SKY PETS';
+      cachedShopStateCode = await window.api.settings.get('shop_state_code');
+      settingsCached = true;
+    }
+  }
+
   function init() {
     if (!initialized) {
       render();
       bindEvents();
       initialized = true;
     }
+    // Fetch settings asynchronously so they don't block
+    cacheSettings();
     // Focus scanner
     setTimeout(() => { if (scanner) scanner.focus(); }, 100);
   }
@@ -556,7 +572,8 @@ const BillingModule = (() => {
       if (gstin.length >= 2) {
         const custStateCode = gstin.substring(0, 2);
         try {
-          const shopState = await window.api.settings.get('shop_state_code');
+          if (!settingsCached) await cacheSettings();
+          const shopState = cachedShopStateCode;
           if (shopState && custStateCode !== shopState) {
             document.getElementById('chk-inter-state').checked = true;
             document.getElementById('inter-state-fields').style.display = 'flex';
@@ -1050,8 +1067,9 @@ const BillingModule = (() => {
     
     if (selectedPaymentMode === 'upi' && currentGrandTotalPaise > 0) {
       try {
-        const shopUpiId = await window.api.settings.get('shop_upi_id');
-        const storeName = await window.api.settings.get('store_name') || 'SKY PETS';
+        if (!settingsCached) await cacheSettings();
+        const shopUpiId = cachedShopUpiId;
+        const storeName = cachedStoreName;
         
         if (shopUpiId && window.QRious) {
           qrContainer.style.display = 'block';
@@ -1430,14 +1448,14 @@ const BillingModule = (() => {
         <div class="r-line"></div>
         ${itemsHtml}
         <div class="r-line"></div>
+        ${saleResult.discountPaise > 0 ? `<div class="r-row"><span>Cart Discount <span style="font-size:10px">(${(saleResult.discountPaise / (saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise + saleResult.discountPaise) * 100).toFixed(2)}%)</span></span><span>-${formatRupees(saleResult.discountPaise)}</span></div>` : ''}
+        ${saleResult.appliedCouponPaise > 0 ? `<div class="r-row"><span>Coupon Applied</span><span>-${formatRupees(saleResult.appliedCouponPaise)}</span></div>` : ''}
         <div class="r-row"><span>Taxable Value</span><span>${formatRupees(saleResult.subtotalPaise)}</span></div>
         ${saleResult.isInterState ?
           `<div class="r-row"><span>IGST</span><span>${formatRupees(saleResult.igstPaise)}</span></div>` :
           `<div class="r-row"><span>CGST</span><span>${formatRupees(saleResult.cgstPaise)}</span></div>
            <div class="r-row"><span>SGST</span><span>${formatRupees(saleResult.sgstPaise)}</span></div>`
         }
-        ${saleResult.discountPaise > 0 ? `<div class="r-row"><span>Cart Discount <span style="font-size:10px">(${(saleResult.discountPaise / (saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise) * 100).toFixed(2)}%)</span></span><span>-${formatRupees(saleResult.discountPaise)}</span></div>` : ''}
-        ${saleResult.appliedCouponPaise > 0 ? `<div class="r-row"><span>Coupon Applied</span><span>-${formatRupees(saleResult.appliedCouponPaise)}</span></div>` : ''}
         <div class="r-line"></div>
         <div class="r-row r-total"><span>GRAND TOTAL</span><span>${formatRupees(saleResult.grandTotalPaise)}</span></div>
         <div class="r-line"></div>

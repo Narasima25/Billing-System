@@ -569,7 +569,8 @@ const ReportsModule = (() => {
       </tr></thead><tbody>
         ${rows}
         <tr style="background:#f8fafc;">
-          <td class="fw-800">GRAND TOTAL</td>
+          <td class="fw-800">GRAND TO
+          TAL</td>
           <td class="fw-800">${totalCount}</td>
           <td class="fw-800 text-green">${formatRupees(totalAmount)}</td>
         </tr>
@@ -664,3 +665,4 @@ const ReportsModule = (() => {
 })();
 
 window.deleteReconSale = ReportsModule.deleteSale;
+

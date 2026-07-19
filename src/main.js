@@ -1912,6 +1912,16 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
   }
 });
 
+ipcMain.handle('purchases:update-date', async (_e, purchaseId, newDate) => {
+  try {
+    db.prepare("UPDATE purchases SET purchase_date = ? WHERE id = ?").run(newDate, purchaseId);
+    return { success: true };
+  } catch (err) {
+    console.error('[IPC] purchases:update-date error:', err);
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('purchases:delete', async (_e, purchaseId) => {
   try {
     const purchaseTransaction = db.transaction(() => {

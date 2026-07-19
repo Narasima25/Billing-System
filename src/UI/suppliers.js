@@ -322,6 +322,35 @@ const SuppliersModule = (() => {
       
       document.getElementById('pd-invoice-no').textContent = invoiceNo || '—';
       document.getElementById('pd-date').textContent = formatDate(dateStr);
+      
+      const editBtn = document.getElementById('pd-edit-date-btn');
+      if (editBtn) {
+        // Reset display in case it was hidden previously
+        editBtn.style.display = 'inline-block';
+        editBtn.onclick = () => {
+          const pdDate = document.getElementById('pd-date');
+          const currentVal = dateStr.split(' ')[0];
+          pdDate.innerHTML = `<input type="date" id="pd-date-input" value="${currentVal}" style="padding: 2px 4px; font-size: 14px; border: 1px solid var(--border); border-radius: 4px;"> <button class="btn btn-primary btn-sm" id="pd-date-save" style="padding:2px 6px; height:auto; min-height:auto;">Save</button>`;
+          
+          editBtn.style.display = 'none';
+          
+          document.getElementById('pd-date-save').onclick = async () => {
+            const newDateStr = document.getElementById('pd-date-input').value;
+            if (!newDateStr) return;
+            
+            const res = await window.api.purchases.updateDate(purchaseId, newDateStr);
+            if (res.success) {
+              showToast('Date updated successfully!', 'success');
+              dateStr = newDateStr; // update local variable
+              pdDate.textContent = formatDate(newDateStr);
+              editBtn.style.display = 'inline-block';
+              loadLedger(); // Refresh ITC ledger if month filter is active
+            } else {
+              showToast(res.error || 'Failed to update date', 'error');
+            }
+          };
+        };
+      }
       document.getElementById('pd-supplier').textContent = supplierName;
       document.getElementById('pd-status').textContent = status;
       

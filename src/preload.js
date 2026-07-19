@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('api', {
     getAll: (params) => ipcRenderer.invoke('purchases:get-all', params),
     getDetails: (id) => ipcRenderer.invoke('purchases:get-details', id),
     delete: (id) => ipcRenderer.invoke('purchases:delete', id),
+    updateDate: (id, newDate) => ipcRenderer.invoke('purchases:update-date', id, newDate),
     addReturn: (data) => ipcRenderer.invoke('purchases:return:add', data),
     getReturns: (supplierId) => ipcRenderer.invoke('purchases:return:get-all', supplierId),
   },
