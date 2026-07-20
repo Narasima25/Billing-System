@@ -101,6 +101,7 @@ const ReportsModule = (() => {
             <input type="date" class="form-input" id="rpt-services-to" value="${today}">
           </div>
           <button class="btn btn-primary btn-sm" id="rpt-services-run">Generate</button>
+          <button class="btn btn-secondary btn-sm" id="rpt-services-export">📥 Export CSV</button>
         </div>
         <div id="rpt-services-summary" class="report-summary mt-16"></div>
         <div id="rpt-services-content"></div>
@@ -187,6 +188,7 @@ const ReportsModule = (() => {
 
     // Services report
     document.getElementById('rpt-services-run').addEventListener('click', runServicesReport);
+    document.getElementById('rpt-services-export').addEventListener('click', exportServicesCSV);
 
     // Profit report
     document.getElementById('rpt-profit-run').addEventListener('click', runProfitReport);
@@ -464,6 +466,22 @@ const ReportsModule = (() => {
     }
   }
 
+  function exportServicesCSV() {
+    const rows = document.querySelectorAll('#rpt-services-table tbody tr');
+    if (rows.length === 0 || (rows.length === 1 && rows[0].innerText.includes('No services'))) {
+      showToast('No data to export', 'warning');
+      return;
+    }
+    let csv = 'Receipt #,Cashier,Items,Base Amount,GST,Total,Date\n';
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 7) {
+        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
+      }
+    });
+    downloadCSV(csv, `services-report-${getToday()}.csv`);
+  }
+
   // ─── Profit Report ────────────────────────────────────────────────────
   async function runProfitReport() {
     const from = document.getElementById('rpt-profit-from').value;
@@ -636,7 +654,7 @@ const ReportsModule = (() => {
   }
 
   function downloadCSV(csv, filename) {
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename; a.click();
