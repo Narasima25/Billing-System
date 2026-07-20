@@ -2514,9 +2514,12 @@ ipcMain.handle('reports:gstr1', async (_e, { startDate, endDate }) => {
       SELECT s.is_inter_state, si.gst_percent, si.line_total_paise, s.customer_state_code
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id
+      LEFT JOIN products p ON si.product_id = p.id
+      LEFT JOIN categories c ON p.category_id = c.id
       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
         AND (s.is_b2b = 0 OR s.customer_gstin = '') AND s.is_return = 0
         AND NOT (s.is_inter_state = 1 AND s.grand_total_paise > 25000000)
+        AND NOT (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')
     `, params);
 
     const b2cSmallMap = {};
