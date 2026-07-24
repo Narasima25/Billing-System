@@ -106,8 +106,10 @@ function initializeSchema(db) {
       quantity INTEGER DEFAULT 0,
       purchase_price_paise INTEGER DEFAULT 0,
       selling_price_paise INTEGER DEFAULT 0,
+      supplier_id INTEGER,
       created_at TEXT DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      FOREIGN KEY (product_id) REFERENCES products(id),
+      FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
     );
   `);
 
@@ -527,6 +529,11 @@ function initializeSchema(db) {
   try { db.exec(`ALTER TABLE purchase_items ADD COLUMN cgst_amount_paise INTEGER DEFAULT 0;`); } catch(e) {}
   try { db.exec(`ALTER TABLE purchase_items ADD COLUMN sgst_amount_paise INTEGER DEFAULT 0;`); } catch(e) {}
   try { db.exec(`ALTER TABLE purchase_items ADD COLUMN amount_with_tax_paise INTEGER DEFAULT 0;`); } catch(e) {}
+
+  // ─── Phase 9: Add supplier_id to product_batches ────────────────────────
+  try { db.exec(`ALTER TABLE product_batches ADD COLUMN supplier_id INTEGER;`); } catch(e) {}
+  // Data migration: populate existing batches with the product's primary supplier if missing
+  try { db.exec(`UPDATE product_batches SET supplier_id = (SELECT supplier_id FROM products WHERE products.id = product_batches.product_id) WHERE supplier_id IS NULL;`); } catch(e) {}
 
   // ─── Seed: Default Admin User ────────────────────────────────────────
   const adminCheck = db.prepare("SELECT COUNT(*) as cnt FROM users WHERE username = 'admin'").get();

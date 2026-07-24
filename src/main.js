@@ -234,10 +234,6 @@ app.on('will-quit', () => {
   }
 });
 
-/**
- * Creates an automatic local backup of the database and retains only the last 10 backups.
- * Designed to run synchronously during app shutdown.
- */
 function performAutoBackup() {
   try {
     const backupDir = path.join(app.getPath('userData'), 'AutoBackups');
@@ -419,9 +415,9 @@ ipcMain.handle('suppliers:get-all', async (_e, options = {}) => {
         SELECT s.*, 
           GROUP_CONCAT(p.invoice_number) as invoice_numbers,
           (
-            SELECT COALESCE(SUM(pr.stock_quantity * pr.purchase_price_paise), 0)
-            FROM products pr
-            WHERE pr.supplier_id = s.id AND pr.stock_quantity > 0 AND pr.is_active = 1
+            SELECT COALESCE(SUM(pb.quantity * pb.purchase_price_paise), 0)
+            FROM product_batches pb
+            WHERE pb.supplier_id = s.id AND pb.quantity > 0
           ) as current_stock_value_paise
         FROM suppliers s 
         LEFT JOIN purchases p ON s.id = p.supplier_id 
@@ -433,9 +429,9 @@ ipcMain.handle('suppliers:get-all', async (_e, options = {}) => {
       SELECT s.*, 
         GROUP_CONCAT(p.invoice_number) as invoice_numbers,
         (
-          SELECT COALESCE(SUM(pr.stock_quantity * pr.purchase_price_paise), 0)
-          FROM products pr
-          WHERE pr.supplier_id = s.id AND pr.stock_quantity > 0 AND pr.is_active = 1
+          SELECT COALESCE(SUM(pb.quantity * pb.purchase_price_paise), 0)
+          FROM product_batches pb
+          WHERE pb.supplier_id = s.id AND pb.quantity > 0
         ) as current_stock_value_paise
       FROM suppliers s 
       LEFT JOIN purchases p ON s.id = p.supplier_id 
@@ -833,8 +829,8 @@ ipcMain.handle('inventory:stock-in', async (_e, { barcode, quantity, userId, bat
 
       if (batchNumber || expiryDate) {
         runSql(
-          "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)",
-          [product.id, batchNumber || ('B-' + Date.now().toString().slice(-4)), expiryDate || '', quantity, purchasePricePaise ?? product.purchase_price_paise, sellingPricePaise ?? product.selling_price_paise]
+          "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise, supplier_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [product.id, batchNumber || ('B-' + Date.now().toString().slice(-4)), expiryDate || '', quantity, purchasePricePaise ?? product.purchase_price_paise, sellingPricePaise ?? product.selling_price_paise, product.supplier_id || null]
         );
       }
     });
@@ -1893,14 +1889,15 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
           const batchNo = item.batchNumber || ('P-' + (invoiceNumber || purchaseId) + '-' + Date.now().toString().slice(-4));
           const expDate = item.expiryDate || '';
           db.prepare(
-            "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise) VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO product_batches (product_id, batch_number, expiry_date, quantity, purchase_price_paise, selling_price_paise, supplier_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
           ).run(
             productId,
             batchNo,
             expDate,
             totalQuantityToStock,
-            effectivePurchasePricePaise ?? 0,
-            item.sellingPricePaise
+            totalQuantityToStock > 0 ? Math.round((item.quantity * (effectivePurchasePricePaise ?? 0)) / totalQuantityToStock) : 0,
+            item.sellingPricePaise,
+            supplierId
           );
         }
       }
