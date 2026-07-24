@@ -535,6 +535,67 @@ function initializeSchema(db) {
   // Data migration: populate existing batches with the product's primary supplier if missing
   try { db.exec(`UPDATE product_batches SET supplier_id = (SELECT supplier_id FROM products WHERE products.id = product_batches.product_id) WHERE supplier_id IS NULL;`); } catch(e) {}
 
+  // ─── Phase 10: Fix Batch Data (v1.0.33) ──────────────────────────────────
+  try {
+    const migrationCheck = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_33_batch_fix'").get();
+    if (!migrationCheck || migrationCheck.value !== '1') {
+      // 1. Unlink manual/initial batches from suppliers to prevent stock inflation
+      db.exec(`UPDATE product_batches SET supplier_id = NULL WHERE batch_number NOT LIKE 'P-%';`);
+
+      // 2. Fix purchase prices for batches that included free quantities
+      db.exec(`
+        UPDATE product_batches 
+        SET purchase_price_paise = (
+            SELECT ROUND((pi.quantity * pi.unit_cost_paise) * 1.0 / (pi.quantity + pi.free_quantity))
+            FROM purchase_items pi
+            JOIN purchases p ON pi.purchase_id = p.id
+            WHERE pi.product_id = product_batches.product_id 
+            AND product_batches.batch_number LIKE 'P-' || COALESCE(NULLIF(p.invoice_number, ''), p.id) || '-%'
+            AND pi.free_quantity > 0
+            LIMIT 1
+        )
+        WHERE EXISTS (
+            SELECT 1 FROM purchase_items pi
+            JOIN purchases p ON pi.purchase_id = p.id
+            WHERE pi.product_id = product_batches.product_id 
+            AND product_batches.batch_number LIKE 'P-' || COALESCE(NULLIF(p.invoice_number, ''), p.id) || '-%'
+            AND pi.free_quantity > 0
+        );
+      `);
+
+      // 3. Re-link unlinked P- batches by extracting invoice from batch_number
+      const unlinkedBatches = db.prepare(`SELECT id, batch_number FROM product_batches WHERE supplier_id IS NULL AND batch_number LIKE 'P-%'`).all();
+      const updateBatchSupplier = db.prepare(`UPDATE product_batches SET supplier_id = ? WHERE id = ?`);
+      
+      for (const b of unlinkedBatches) {
+        const match = b.batch_number.match(/^P-(.+)-[0-9]{4}$/);
+        if (match) {
+          const invOrPid = match[1];
+          let supplierId = null;
+          
+          const pRow = db.prepare(`SELECT supplier_id FROM purchases WHERE invoice_number = ?`).get(invOrPid);
+          if (pRow) {
+            supplierId = pRow.supplier_id;
+          } else {
+            try {
+              const pid = parseInt(invOrPid, 10);
+              const pRowId = db.prepare(`SELECT supplier_id FROM purchases WHERE id = ?`).get(pid);
+              if (pRowId) supplierId = pRowId.supplier_id;
+            } catch (e) {}
+          }
+          
+          if (supplierId) {
+            updateBatchSupplier.run(supplierId, b.id);
+          }
+        }
+      }
+
+      db.exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('v1_0_33_batch_fix', '1')`);
+    }
+  } catch (e) {
+    console.error('Failed to run v1_0_33_batch_fix migration:', e);
+  }
+
   // ─── Seed: Default Admin User ────────────────────────────────────────
   const adminCheck = db.prepare("SELECT COUNT(*) as cnt FROM users WHERE username = 'admin'").get();
   const adminExists = adminCheck && adminCheck.cnt > 0;
