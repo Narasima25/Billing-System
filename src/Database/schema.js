@@ -535,65 +535,58 @@ function initializeSchema(db) {
   // Data migration: populate existing batches with the product's primary supplier if missing
   try { db.exec(`UPDATE product_batches SET supplier_id = (SELECT supplier_id FROM products WHERE products.id = product_batches.product_id) WHERE supplier_id IS NULL;`); } catch(e) {}
 
-  // ─── Phase 10: Fix Batch Data (v1.0.33) ──────────────────────────────────
+  // ─── Phase 10: Fix Batch Data (v1.0.35) ──────────────────────────────────
   try {
-    const migrationCheck = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_33_batch_fix'").get();
+    const migrationCheck = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_35_batch_fix2'").get();
     if (!migrationCheck || migrationCheck.value !== '1') {
-      // 1. Unlink manual/initial batches from suppliers to prevent stock inflation
-      db.exec(`UPDATE product_batches SET supplier_id = NULL WHERE batch_number NOT LIKE 'P-%';`);
+      
+      // 1. Unlink purely manual initialization batches (B-INIT-*)
+      db.exec(`UPDATE product_batches SET supplier_id = NULL WHERE batch_number LIKE 'B-INIT-%';`);
 
-      // 2. Fix purchase prices for batches that included free quantities
-      db.exec(`
-        UPDATE product_batches 
-        SET purchase_price_paise = (
-            SELECT ROUND((pi.quantity * pi.unit_cost_paise) * 1.0 / (pi.quantity + pi.free_quantity))
-            FROM purchase_items pi
-            JOIN purchases p ON pi.purchase_id = p.id
-            WHERE pi.product_id = product_batches.product_id 
-            AND product_batches.batch_number LIKE 'P-' || COALESCE(NULLIF(p.invoice_number, ''), p.id) || '-%'
-            AND pi.free_quantity > 0
-            LIMIT 1
-        )
-        WHERE EXISTS (
-            SELECT 1 FROM purchase_items pi
-            JOIN purchases p ON pi.purchase_id = p.id
-            WHERE pi.product_id = product_batches.product_id 
-            AND product_batches.batch_number LIKE 'P-' || COALESCE(NULLIF(p.invoice_number, ''), p.id) || '-%'
-            AND pi.free_quantity > 0
-        );
+      // 2. Try to link all unlinked batches using the exact creation timestamp of a purchase
+      const unlinkedBatches = db.prepare(`SELECT id, created_at, product_id FROM product_batches WHERE supplier_id IS NULL AND batch_number NOT LIKE 'B-INIT-%'`).all();
+      const findPurchaseByTime = db.prepare(`
+        SELECT DISTINCT p.supplier_id 
+        FROM purchases p
+        JOIN purchase_items pi ON p.id = pi.purchase_id
+        WHERE p.created_at = ? AND pi.product_id = ?
       `);
-
-      // 3. Re-link unlinked P- batches by extracting invoice from batch_number
-      const unlinkedBatches = db.prepare(`SELECT id, batch_number FROM product_batches WHERE supplier_id IS NULL AND batch_number LIKE 'P-%'`).all();
       const updateBatchSupplier = db.prepare(`UPDATE product_batches SET supplier_id = ? WHERE id = ?`);
       
       for (const b of unlinkedBatches) {
-        const match = b.batch_number.match(/^P-(.+)-[0-9]{4}$/);
-        if (match) {
-          const invOrPid = match[1];
-          let supplierId = null;
-          
-          const pRow = db.prepare(`SELECT supplier_id FROM purchases WHERE invoice_number = ?`).get(invOrPid);
-          if (pRow) {
-            supplierId = pRow.supplier_id;
-          } else {
-            try {
-              const pid = parseInt(invOrPid, 10);
-              const pRowId = db.prepare(`SELECT supplier_id FROM purchases WHERE id = ?`).get(pid);
-              if (pRowId) supplierId = pRowId.supplier_id;
-            } catch (e) {}
-          }
-          
-          if (supplierId) {
-            updateBatchSupplier.run(supplierId, b.id);
+        const matches = findPurchaseByTime.all(b.created_at, b.product_id);
+        if (matches.length === 1) {
+          updateBatchSupplier.run(matches[0].supplier_id, b.id);
+        }
+      }
+
+      // 3. Fix purchase prices for ALL batches linked to a purchase at the same timestamp (handle free quantity prorating)
+      const allBatches = db.prepare(`SELECT id, product_id, created_at FROM product_batches`).all();
+      const findPurchaseItem = db.prepare(`
+        SELECT pi.quantity, pi.free_quantity, pi.unit_cost_paise
+        FROM purchase_items pi
+        JOIN purchases p ON pi.purchase_id = p.id
+        WHERE p.created_at = ? AND pi.product_id = ?
+      `);
+      const updateBatchPrice = db.prepare(`UPDATE product_batches SET purchase_price_paise = ? WHERE id = ?`);
+
+      for (const b of allBatches) {
+        const matches = findPurchaseItem.all(b.created_at, b.product_id);
+        if (matches.length >= 1) {
+          const { quantity, free_quantity, unit_cost_paise } = matches[0];
+          const total_qty = quantity + free_quantity;
+          if (total_qty > 0 && free_quantity > 0) {
+            const total_cost = quantity * unit_cost_paise;
+            const prorated_cost = Math.round(total_cost / total_qty);
+            updateBatchPrice.run(prorated_cost, b.id);
           }
         }
       }
 
-      db.exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('v1_0_33_batch_fix', '1')`);
+      db.exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('v1_0_35_batch_fix2', '1')`);
     }
   } catch (e) {
-    console.error('Failed to run v1_0_33_batch_fix migration:', e);
+    console.error('Failed to run v1_0_35_batch_fix2 migration:', e);
   }
 
   // ─── Seed: Default Admin User ────────────────────────────────────────
