@@ -1394,7 +1394,7 @@ const BillingModule = (() => {
           </tr>
           ${saleResult.discountPaise > 0 ? `
           <tr>
-            <td>Overall Discount <span style="font-size:10px; color:var(--text-muted);">(${(saleResult.discountPaise / (saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise) * 100).toFixed(2)}%)</span></td>
+            <td>Overall Discount <span style="font-size:10px; color:var(--text-muted);">(${((saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise + saleResult.discountPaise) > 0 ? (saleResult.discountPaise / (saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise + saleResult.discountPaise) * 100).toFixed(2) : '0.00')}%)</span></td>
             <td style="text-align:right;">-${formatRupees(saleResult.discountPaise)}</td>
           </tr>` : ''}
           ${saleResult.isInterState ? `
@@ -1448,7 +1448,7 @@ const BillingModule = (() => {
         <div class="r-line"></div>
         ${itemsHtml}
         <div class="r-line"></div>
-        ${saleResult.discountPaise > 0 ? `<div class="r-row"><span>Cart Discount <span style="font-size:10px">(${(saleResult.discountPaise / (saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise + saleResult.discountPaise) * 100).toFixed(2)}%)</span></span><span>-${formatRupees(saleResult.discountPaise)}</span></div>` : ''}
+        ${saleResult.discountPaise > 0 ? `<div class="r-row"><span>Cart Discount <span style="font-size:10px">(${((saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise + saleResult.discountPaise) > 0 ? (saleResult.discountPaise / (saleResult.subtotalPaise + saleResult.cgstPaise + saleResult.sgstPaise + saleResult.igstPaise + saleResult.discountPaise) * 100).toFixed(2) : '0.00')}%)</span></span><span>-${formatRupees(saleResult.discountPaise)}</span></div>` : ''}
         ${saleResult.appliedCouponPaise > 0 ? `<div class="r-row"><span>Coupon Applied</span><span>-${formatRupees(saleResult.appliedCouponPaise)}</span></div>` : ''}
         <div class="r-row"><span>Taxable Value</span><span>${formatRupees(saleResult.subtotalPaise)}</span></div>
         ${saleResult.isInterState ?

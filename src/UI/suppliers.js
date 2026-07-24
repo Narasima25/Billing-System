@@ -386,6 +386,8 @@ const SuppliersModule = (() => {
             if (res.success) {
               showToast('Purchase deleted successfully', 'success');
               closeModal('modal-purchase-details');
+              // Refresh the main supplier table to update "Current Stock Value"
+              loadSuppliers();
               // Refresh history by triggering click again
               const supplierId = result.purchase.supplier_id;
               document.querySelector(`button[data-action="history"][data-id="${supplierId}"]`)?.click();
@@ -414,9 +416,12 @@ const SuppliersModule = (() => {
       } else {
         tbody.innerHTML = result.items.map(item => {
           const mrp = item.mrp_paise || item.selling_price_paise || 0;
-          const taxable = item.taxable_amount_paise || (item.base_cost_paise * item.quantity);
-          const total = item.total_amount_paise || Math.max(0, taxable - (item.scheme_discount_paise || 0));
-          const amtWithTax = item.amount_with_tax_paise || item.line_total_paise || 0;
+          const baseCostTotal = item.base_cost_paise * item.quantity;
+          const discount = item.scheme_discount_paise || 0;
+          const taxable = item.taxable_amount_paise || Math.max(0, baseCostTotal - discount);
+          const cgstAmt = item.cgst_amount_paise || Math.round(taxable * ((item.cgst_percent || 0) / 100));
+          const sgstAmt = item.sgst_amount_paise || Math.round(taxable * ((item.sgst_percent || 0) / 100));
+          const amtWithTax = item.amount_with_tax_paise || item.line_total_paise || (taxable + cgstAmt + sgstAmt);
           
           return `
             <tr>
@@ -431,18 +436,18 @@ const SuppliersModule = (() => {
                 ${item.batch_number ? `<br><span class="text-muted" style="font-size:10px;">Batch: ${item.batch_number}</span>` : ''}
               </td>
               <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(mrp)}</td>
-              <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(item.scheme_discount_paise || 0)}</td>
+              <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(discount)}</td>
               <td class="fw-700" style="text-align:right; padding: 4px;">${item.quantity}</td>
               <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(item.base_cost_paise || 0)}</td>
               <td class="text-muted" style="text-align:right; padding: 4px;">${item.free_quantity || 0}</td>
               <td class="text-sm" style="text-align:right; padding: 4px;">${formatRupees(taxable)}</td>
               <td class="text-sm" style="text-align:right; padding: 4px;">
-                ${item.cgst_percent}%<br>
-                <span class="text-muted" style="font-size:10px;">${formatRupees(item.cgst_amount_paise || 0)}</span>
+                ${item.cgst_percent || 0}%<br>
+                <span class="text-muted" style="font-size:10px;">${formatRupees(cgstAmt)}</span>
               </td>
               <td class="text-sm" style="text-align:right; padding: 4px;">
-                ${item.sgst_percent}%<br>
-                <span class="text-muted" style="font-size:10px;">${formatRupees(item.sgst_amount_paise || 0)}</span>
+                ${item.sgst_percent || 0}%<br>
+                <span class="text-muted" style="font-size:10px;">${formatRupees(sgstAmt)}</span>
               </td>
               <td class="fw-700 text-teal" style="text-align:right; padding: 4px;">${formatRupees(amtWithTax)}</td>
             </tr>

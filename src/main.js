@@ -1117,6 +1117,9 @@ ipcMain.handle('billing:get-next-receipt-number', async (_e, dateStr) => {
       counter++;
     }
     
+    // Bug fix: Persist the counter to settings so the self-heal query doesn't run every time
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('receipt_counter', ?)").run(String(counter));
+
     return receiptNumber;
   } catch (err) {
     return 'Auto Generated';
@@ -1522,8 +1525,9 @@ ipcMain.handle('billing:delete-sale', async (_e, saleId) => {
             const appliedCoupon = sale.applied_coupon_paise || 0;
             const grandTotal = sale.grand_total_paise || 0;
 
-            // Reverse: remove earned reward, refund applied coupon, reduce lifetime spend
-            const actualSpent = Math.max(0, grandTotal - appliedCoupon);
+            // Bug fix: Checkout adds preCouponGrandTotal (= grandTotal + appliedCoupon) to lifetime spend.
+            // Reverse must match that same amount, not (grandTotal - appliedCoupon).
+            const actualSpent = Math.max(0, grandTotal + appliedCoupon);
             db.prepare(
               "UPDATE customers SET coupon_balance_paise = MAX(0, coupon_balance_paise - ? + ?), total_lifetime_spent_paise = MAX(0, total_lifetime_spent_paise - ?), updated_at = datetime('now','localtime') WHERE id = ?"
             ).run(rewardEarned, appliedCoupon, actualSpent, cust.id);
@@ -1839,8 +1843,8 @@ ipcMain.handle('purchases:add', async (_e, { supplierId, supplierGstin, invoiceN
             // Update existing product with latest prices and HSN (reactivating if deleted)
             const perUnitSchemeDisc = item.quantity > 0 ? Math.round((item.schemeDiscountPaise ?? 0) / item.quantity) : 0;
             db.prepare(
-              "UPDATE products SET is_active = 1, base_price_paise = ?, scheme_discount_paise = ?, purchase_price_paise = ?, selling_price_paise = ?, hsn_code = ?, updated_at = datetime('now','localtime') WHERE id = ?"
-            ).run(item.basePricePaise ?? 0, perUnitSchemeDisc, effectivePurchasePricePaise, item.sellingPricePaise, item.hsnCode, productId);
+              "UPDATE products SET is_active = 1, supplier_id = ?, base_price_paise = ?, scheme_discount_paise = ?, purchase_price_paise = ?, selling_price_paise = ?, hsn_code = ?, updated_at = datetime('now','localtime') WHERE id = ?"
+            ).run(supplierId, item.basePricePaise ?? 0, perUnitSchemeDisc, effectivePurchasePricePaise, item.sellingPricePaise, item.hsnCode, productId);
           }
         } else {
           // Create new product
