@@ -2368,20 +2368,23 @@ ipcMain.handle('reports:hsn-summary', async (_e, { startDate, endDate }) => {
       const lineTotal = item.line_total_paise;
       const taxableValue = item.gst_percent > 0 ? Math.round((lineTotal * 100) / (100 + item.gst_percent)) : lineTotal;
       const gstAmount = lineTotal - taxableValue;
-      let cgst = 0, sgst = 0, igst = 0;
-      if (item.is_inter_state) {
-        igst = gstAmount;
-      } else {
-        cgst = Math.round(gstAmount / 2);
-        sgst = gstAmount - cgst; // Bug fix #5: Prevent rounding errors (3+3 != 5)
-      }
-
       map[key].total_quantity += item.quantity;
       map[key].total_taxable_value += taxableValue;
-      map[key].total_cgst += cgst;
-      map[key].total_sgst += sgst;
-      map[key].total_igst += igst;
-      map[key].total_gst += (cgst + sgst + igst);
+      if (item.is_inter_state) {
+        map[key].total_igst += gstAmount;
+      } else {
+        map[key]._intra_gst = (map[key]._intra_gst || 0) + gstAmount;
+      }
+    }
+
+    for (const key in map) {
+      if (map[key]._intra_gst) {
+        const half = Math.round(map[key]._intra_gst / 2);
+        map[key].total_cgst = half;
+        map[key].total_sgst = map[key]._intra_gst - half;
+      }
+      map[key].total_gst = map[key].total_cgst + map[key].total_sgst + map[key].total_igst;
+      delete map[key]._intra_gst;
     }
 
     return Object.values(map);
@@ -2559,9 +2562,12 @@ ipcMain.handle('reports:gstr1', async (_e, { startDate, endDate }) => {
         AND NOT (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')
     `, params);
 
+    const shopStateSetting = queryOne("SELECT value FROM settings WHERE key = 'shop_state_code'");
+    const shopStateCode = (shopStateSetting && shopStateSetting.value) ? shopStateSetting.value : '';
+
     const b2cSmallMap = {};
     for (const item of b2cSmallItems) {
-      const pos = item.customer_state_code || (item.is_inter_state ? 'OT' : 'local');
+      const pos = item.customer_state_code || (item.is_inter_state ? '97' : shopStateCode);
       const key = `${pos}_${item.gst_percent}`;
       if (!b2cSmallMap[key]) {
         b2cSmallMap[key] = { is_inter_state: item.is_inter_state, gst_percent: item.gst_percent, place_of_supply: pos, taxable_value: 0, cgst: 0, sgst: 0, igst: 0 };

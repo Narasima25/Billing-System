@@ -295,7 +295,7 @@ const ReportsModule = (() => {
     // Table 7 (B2C Small)
     let b2csCsv = 'Type,Place Of Supply,Applicable % of Tax Rate,Rate,Taxable Value,Cess Amount,E-Commerce GSTIN\n';
     lastGstrData.b2cSmall.forEach(r => {
-      const pos = r.place_of_supply || (r.is_inter_state ? '97' : 'local');
+      const pos = r.place_of_supply || (r.is_inter_state ? '97' : '');
       b2csCsv += `"OE","${pos}","",${r.gst_percent},${r.taxable_value/100},0,""\n`;
     });
     if (lastGstrData.b2cSmall.length > 0) downloadCSV(b2csCsv, 'b2cs.csv');
@@ -645,18 +645,15 @@ const ReportsModule = (() => {
   function exportReconciliationCSV() {
     if (!lastReconData) { showToast('Generate report first', 'warning'); return; }
     let csv = 'Payment Mode,Type,Transaction Count,Total Amount (₹)\n';
+    let totalCount = 0;
+    let totalAmount = 0;
     lastReconData.summary.forEach(r => {
       const mode = r.is_return ? `REFUND - ${(r.payment_mode||'cash').toUpperCase()}` : (r.payment_mode||'cash').toUpperCase();
       csv += `"${mode}","${r.is_return ? 'Refund' : 'Sale'}",${r.transaction_count},${(r.total_amount/100).toFixed(2)}\n`;
+      totalCount += r.transaction_count;
+      totalAmount += r.total_amount;
     });
-    csv += '\n';
-    // Detailed transactions
-    csv += 'Receipt No,Time,Customer,Phone,Payment Mode,Type,Amount (₹)\n';
-    lastReconData.sales.forEach(s => {
-      const timeStr = new Date(s.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      const type = s.is_return ? 'Refund' : 'Sale';
-      csv += `"${s.receipt_number}","${timeStr}","${s.customer_name||'Walk-in'}","${s.customer_phone||''}","${(s.payment_mode||'cash').toUpperCase()}","${type}",${(s.grand_total_paise/100).toFixed(2)}\n`;
-    });
+    csv += `"GRAND TOTAL","",${totalCount},${(totalAmount/100).toFixed(2)}\n`;
     downloadCSV(csv, `sale-report-${getToday()}.csv`);
   }
 
