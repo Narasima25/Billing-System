@@ -2178,6 +2178,18 @@ ipcMain.handle('dashboard:get-stats', async () => {
       [`${todayStr}%`]
     );
 
+    const todayServiceSales = queryOne(
+      `SELECT COALESCE(SUM(si.line_total_paise), 0) as total 
+       FROM sale_items si
+       JOIN sales s ON si.sale_id = s.id
+       LEFT JOIN products p ON si.product_id = p.id
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE s.created_at LIKE ? 
+         AND s.is_return = 0
+         AND (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')`,
+      [`${todayStr}%`]
+    );
+
     const monthlySales = queryOne(
       "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at >= ? AND is_return = 0 AND receipt_number NOT LIKE 'SRV-%'",
       [monthStart]
@@ -2223,6 +2235,7 @@ ipcMain.handle('dashboard:get-stats', async () => {
 
     return {
       todaySalesPaise: todaySales ? todaySales.total : 0,
+      todayServiceRevenuePaise: todayServiceSales ? todayServiceSales.total : 0,
       todaySalesCount: todaySales ? todaySales.cnt : 0,
       monthlySalesPaise: monthlySales ? monthlySales.total : 0,
       monthlySalesCount: monthlySales ? monthlySales.cnt : 0,
@@ -2249,7 +2262,9 @@ ipcMain.handle('reports:sales', async (_e, { startDate, endDate, paymentMode }) 
         (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) as item_count
        FROM sales s
        LEFT JOIN users u ON s.user_id = u.id
-       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?`;
+       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
+         AND s.is_return = 0
+         AND s.receipt_number NOT LIKE 'SRV-%'`;
 
     let summaryQuery = `SELECT COUNT(*) as total_sales,
         COALESCE(SUM(subtotal_paise), 0) as total_subtotal,
@@ -2258,7 +2273,9 @@ ipcMain.handle('reports:sales', async (_e, { startDate, endDate, paymentMode }) 
         COALESCE(SUM(sgst_paise), 0) as total_sgst,
         COALESCE(SUM(igst_paise), 0) as total_igst,
         COALESCE(SUM(grand_total_paise), 0) as total_grand
-       FROM sales WHERE date(created_at) >= ? AND date(created_at) <= ?`;
+       FROM sales WHERE date(created_at) >= ? AND date(created_at) <= ?
+         AND is_return = 0
+         AND receipt_number NOT LIKE 'SRV-%'`;
 
     const params = [startDate, endDate];
 
@@ -2286,9 +2303,9 @@ ipcMain.handle('reports:services', async (_e, { startDate, endDate }) => {
         u.display_name as cashier_name,
         COALESCE(SUM(si.line_total_paise), 0) as grand_total_paise,
         COALESCE(SUM(CASE WHEN si.gst_percent > 0 THEN ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE si.line_total_paise END), 0) as subtotal_paise,
-        COALESCE(SUM(CASE WHEN si.gst_percent > 0 THEN si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE 0 END) / 2, 0) as cgst_paise,
-        COALESCE(SUM(CASE WHEN si.gst_percent > 0 THEN si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE 0 END) / 2, 0) as sgst_paise,
-        0 as igst_paise,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 AND s.is_inter_state = 0 THEN (si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent))) / 2 ELSE 0 END), 0) as cgst_paise,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 AND s.is_inter_state = 0 THEN (si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent))) / 2 ELSE 0 END), 0) as sgst_paise,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 AND s.is_inter_state = 1 THEN si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE 0 END), 0) as igst_paise,
         COUNT(si.id) as item_count
        FROM sale_items si
        JOIN sales s ON si.sale_id = s.id
@@ -2502,8 +2519,10 @@ ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
       }
       totalRevenue += netRevenuePaise;
       
-      const totalQty = (item.quantity || 0) + (item.free_quantity || 0);
-      totalCost += item.actual_cost_paise * totalQty;
+      // Cost is based on quantity actually sold (NOT free_quantity - those were supplier's free items)
+      // Free items' cost is prorated during purchase receipt, not at the sale level
+      const soldQty = item.quantity || 0;
+      totalCost += item.actual_cost_paise * soldQty;
     });
 
     // item.line_total_paise ALREADY has discounts subtracted during checkout.

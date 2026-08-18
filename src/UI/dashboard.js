@@ -21,6 +21,8 @@ const DashboardModule = (() => {
   }
 
   function render() {
+    const isAdmin = typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin';
+
     panel.innerHTML = `
       <div class="section-header">
         <h2><i data-lucide="layout-dashboard"></i> Dashboard Overview</h2>
@@ -34,6 +36,11 @@ const DashboardModule = (() => {
           <span class="stat-value text-teal" id="ds-today-sales">₹0.00</span>
           <span class="stat-label">Today's Sales</span>
         </div>
+        <div class="stat-card violet" style="cursor:pointer;" onclick="window.navigateTo('reports'); setTimeout(() => document.querySelector('[data-tab=\\'services\\']').click(), 50)">
+          <span class="stat-icon"><i data-lucide="scissors"></i></span>
+          <span class="stat-value text-violet" id="ds-today-services">₹0.00</span>
+          <span class="stat-label">Service Revenue</span>
+        </div>
         <div class="stat-card blue">
           <span class="stat-icon"><i data-lucide="calendar"></i></span>
           <span class="stat-value text-blue" id="ds-monthly-sales">₹0.00</span>
@@ -44,14 +51,14 @@ const DashboardModule = (() => {
           <span class="stat-value text-green" id="ds-total-revenue">₹0.00</span>
           <span class="stat-label">Total Revenue</span>
         </div>
+      </div>
+
+      <div class="grid-4 mb-24">
         <div class="stat-card orange">
           <span class="stat-icon"><i data-lucide="tags"></i></span>
           <span class="stat-value text-orange" id="ds-total-products">0</span>
           <span class="stat-label">Total Products</span>
         </div>
-      </div>
-
-      <div class="grid-3 mb-24">
         <div class="stat-card teal">
           <span class="stat-icon"><i data-lucide="package"></i></span>
           <span class="stat-value" id="ds-total-inventory">0</span>
@@ -69,7 +76,7 @@ const DashboardModule = (() => {
         </div>
       </div>
 
-      ${(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin') ? `
+      ${isAdmin ? `
       <!-- Admin Insights -->
       <div class="section-header mt-24">
         <h2><i data-lucide="shield"></i> Admin Insights</h2>
@@ -125,6 +132,7 @@ const DashboardModule = (() => {
       const stats = await window.api.dashboard.getStats();
 
       document.getElementById('ds-today-sales').textContent = formatRupees(stats.todaySalesPaise || 0);
+      document.getElementById('ds-today-services').textContent = formatRupees(stats.todayServiceRevenuePaise || 0);
       document.getElementById('ds-monthly-sales').textContent = formatRupees(stats.monthlySalesPaise || 0);
       document.getElementById('ds-total-revenue').textContent = formatRupees(stats.totalRevenuePaise || 0);
       document.getElementById('ds-total-products').textContent = (stats.totalProducts || 0).toLocaleString('en-IN');

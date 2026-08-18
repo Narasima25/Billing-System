@@ -337,14 +337,19 @@ const ReportsModule = (() => {
         return;
       }
 
-      let totalValue = 0;
-      products.forEach(p => { totalValue += p.selling_price_paise * p.stock_quantity; });
+      let totalStockValue = 0;
+      let totalCostValue = 0;
+      products.forEach(p => {
+        totalStockValue += p.selling_price_paise * p.stock_quantity;
+        totalCostValue += p.purchase_price_paise * p.stock_quantity;
+      });
       lastInventoryData = products;
 
       content.innerHTML = `
         <div class="report-summary mt-12 mb-16">
           <div class="summary-card"><span class="sc-value text-teal">${products.length}</span><span class="sc-label">Products</span></div>
-          <div class="summary-card"><span class="sc-value text-green">${formatRupees(totalValue)}</span><span class="sc-label">Stock Value</span></div>
+          <div class="summary-card"><span class="sc-value text-rose">${formatRupees(totalCostValue)}</span><span class="sc-label">Cost Value</span></div>
+          <div class="summary-card"><span class="sc-value text-green">${formatRupees(totalStockValue)}</span><span class="sc-label">Selling Value</span></div>
         </div>
         <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table" id="rpt-inv-table"><thead><tr>
           <th>Product</th><th>Category</th><th>Stock</th><th>Min Level</th><th>Selling ₹</th><th>Value</th>
@@ -561,13 +566,12 @@ const ReportsModule = (() => {
       }
       lastReconData = { summary, sales };
 
-      let totalCount = 0;
-      let totalAmount = 0;
+      let totalSalesCount = 0;
+      let totalSalesAmount = 0;
+      let totalRefundCount = 0;
+      let totalRefundAmount = 0;
 
       const rows = summary.map(r => {
-        totalCount += r.transaction_count;
-        totalAmount += r.total_amount;
-        
         let modeDisplay = (r.payment_mode || 'cash').toUpperCase();
         let payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[r.payment_mode] || 'badge-teal';
         let amountColor = 'text-green';
@@ -576,6 +580,11 @@ const ReportsModule = (() => {
            modeDisplay = `REFUND - ${modeDisplay}`;
            payBadge = 'badge-rose';
            amountColor = 'text-rose';
+           totalRefundCount += r.transaction_count;
+           totalRefundAmount += r.total_amount;
+        } else {
+           totalSalesCount += r.transaction_count;
+           totalSalesAmount += r.total_amount;
         }
 
         return `<tr>
@@ -589,10 +598,10 @@ const ReportsModule = (() => {
         <th>Payment Mode</th><th>Transaction Count</th><th>Total Amount</th>
       </tr></thead><tbody>
         ${rows}
-        <tr style="background:#f8fafc;">
-          <td class="fw-800">GRAND TOTAL</td>
-          <td class="fw-800">${totalCount}</td>
-          <td class="fw-800 text-green">${formatRupees(totalAmount)}</td>
+        <tr style="background:#f0f9ff; border-top: 2px solid #1677ff;">
+          <td class="fw-800">NET TOTAL (Sales - Refunds)</td>
+          <td class="fw-800">${totalSalesCount - totalRefundCount}</td>
+          <td class="fw-800 text-teal">${formatRupees(totalSalesAmount - totalRefundAmount)}</td>
         </tr>
       </tbody></table></div></div>`;
 

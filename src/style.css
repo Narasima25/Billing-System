@@ -692,6 +692,10 @@ textarea {
   background: var(--accent-amber);
 }
 
+.stat-card.violet::before {
+  background: var(--accent-violet);
+}
+
 .stat-card:hover {
   transform: translateY(-3px);
   box-shadow: var(--shadow-lg);
@@ -1839,6 +1843,10 @@ textarea {
 
 .text-blue {
   color: var(--accent-blue);
+}
+
+.text-violet {
+  color: var(--accent-violet);
 }
 
 .text-muted {
