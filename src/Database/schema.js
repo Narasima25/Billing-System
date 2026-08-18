@@ -589,6 +589,112 @@ function initializeSchema(db) {
     console.error('Failed to run v1_0_35_batch_fix2 migration:', e);
   }
 
+  // ─── Phase 11: Fix historical cart discounts in sale_items (v1.0.36) ─────
+  try {
+    const checkDiscountPatch = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_36_discount_patch'").get();
+    if (!checkDiscountPatch || checkDiscountPatch.value !== '1') {
+      const mismatchedSales = db.prepare(`
+        SELECT s.id, s.receipt_number, s.grand_total_paise, 
+               (SELECT SUM(line_total_paise) FROM sale_items si WHERE si.sale_id = s.id) as sum_items 
+        FROM sales s 
+        WHERE s.grand_total_paise != (SELECT SUM(line_total_paise) FROM sale_items si WHERE si.sale_id = s.id)
+          AND (SELECT SUM(line_total_paise) FROM sale_items si WHERE si.sale_id = s.id) IS NOT NULL
+      `).all();
+
+      for (const sale of mismatchedSales) {
+        const discountToDistribute = sale.sum_items - sale.grand_total_paise;
+        if (discountToDistribute <= 0) continue;
+
+        const items = db.prepare('SELECT id, line_total_paise, discount_paise FROM sale_items WHERE sale_id = ?').all(sale.id);
+        if (!items || items.length === 0) continue;
+
+        let distributed = 0;
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          let allocated = 0;
+          if (i === items.length - 1) {
+            allocated = discountToDistribute - distributed;
+          } else {
+            allocated = sale.sum_items > 0 ? Math.round((item.line_total_paise / sale.sum_items) * discountToDistribute) : 0;
+          }
+          allocated = Math.min(allocated, item.line_total_paise);
+          distributed += allocated;
+
+          db.prepare('UPDATE sale_items SET line_total_paise = ?, discount_paise = ? WHERE id = ?').run(
+            item.line_total_paise - allocated,
+            item.discount_paise + allocated,
+            item.id
+          );
+        }
+      }
+      db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('v1_0_36_discount_patch', '1')").run();
+    }
+  } catch(e) {
+    console.error('Failed to run v1_0_36_discount_patch migration:', e);
+  }
+
+  // ─── Phase 12: Fix historical purchase discounts in purchase_items (v1.0.37) ─
+  try {
+    const checkPurchasePatch = db.prepare("SELECT value FROM settings WHERE key = 'v1_0_37_purchase_discount_patch'").get();
+    if (!checkPurchasePatch || checkPurchasePatch.value !== '1') {
+      const mismatchedPurchases = db.prepare(`
+        SELECT p.id, p.total_paise, 
+               (SELECT SUM(line_total_paise) FROM purchase_items pi WHERE pi.purchase_id = p.id) as sum_items 
+        FROM purchases p 
+        WHERE p.total_paise != (SELECT SUM(line_total_paise) FROM purchase_items pi WHERE pi.purchase_id = p.id)
+          AND (SELECT SUM(line_total_paise) FROM purchase_items pi WHERE pi.purchase_id = p.id) IS NOT NULL
+          AND p.total_paise < (SELECT SUM(line_total_paise) FROM purchase_items pi WHERE pi.purchase_id = p.id)
+      `).all();
+
+      for (const purchase of mismatchedPurchases) {
+        const discountToDistribute = purchase.sum_items - purchase.total_paise;
+        if (discountToDistribute <= 0) continue;
+
+        const items = db.prepare('SELECT id, line_total_paise FROM purchase_items WHERE purchase_id = ?').all(purchase.id);
+        if (!items || items.length === 0) continue;
+
+        let distributed = 0;
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          let allocated = 0;
+          if (i === items.length - 1) {
+            allocated = discountToDistribute - distributed;
+          } else {
+            allocated = purchase.sum_items > 0 ? Math.round((item.line_total_paise / purchase.sum_items) * discountToDistribute) : 0;
+          }
+          allocated = Math.min(allocated, item.line_total_paise);
+          distributed += allocated;
+
+          db.prepare('UPDATE purchase_items SET line_total_paise = ? WHERE id = ?').run(
+            item.line_total_paise - allocated,
+            item.id
+          );
+        }
+      }
+      db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('v1_0_37_purchase_discount_patch', '1')").run();
+    }
+  } catch(e) {
+    console.error('Failed to run v1_0_37_purchase_discount_patch migration:', e);
+  }
+
+  // ─── Phase 13: Fix corrupted sale dates with typo years (v1.0.38) ──────────
+  try {
+    // Fix any sales where the year is not in a realistic range (e.g. 8226 instead of 2026)
+    // This catches typos like 8226-09-08 that should be 2026-09-08
+    const corruptedDates = db.prepare(
+      "SELECT id, created_at, receipt_number FROM sales WHERE CAST(substr(created_at,1,4) AS INTEGER) > 2100"
+    ).all();
+    for (const s of corruptedDates) {
+      const wrongYear = s.created_at.substring(0, 4);
+      const correctYear = wrongYear.substring(wrongYear.length - 4).replace(/^(\d{2})(\d{2})$/, (_, _1, y2) => '20' + y2);
+      const fixedDate = s.created_at.replace(wrongYear, correctYear);
+      const fixedReceipt = s.receipt_number.replace(wrongYear, correctYear);
+      db.prepare("UPDATE sales SET created_at = ?, receipt_number = ? WHERE id = ?").run(fixedDate, fixedReceipt, s.id);
+    }
+  } catch(e) {
+    console.error('Failed to run date corruption fix:', e);
+  }
+
   // ─── Seed: Default Admin User ────────────────────────────────────────
   const adminCheck = db.prepare("SELECT COUNT(*) as cnt FROM users WHERE username = 'admin'").get();
   const adminExists = adminCheck && adminCheck.cnt > 0;

@@ -202,6 +202,11 @@ const ReportsModule = (() => {
 
   // ─── GSTR-1 Report ─────────────────────────────────────────────────────
   let lastGstrData = null;
+  let lastInventoryData = null;
+  let lastPurchasesData = null;
+  let lastServicesData = null;
+  let lastHsnData = null;
+  let lastReconData = null;
 
   async function runGstr1Report() {
     const from = document.getElementById('rpt-gstr1-from').value;
@@ -334,6 +339,7 @@ const ReportsModule = (() => {
 
       let totalValue = 0;
       products.forEach(p => { totalValue += p.selling_price_paise * p.stock_quantity; });
+      lastInventoryData = products;
 
       content.innerHTML = `
         <div class="report-summary mt-12 mb-16">
@@ -361,14 +367,11 @@ const ReportsModule = (() => {
   }
 
   function exportInventoryCSV() {
-    const table = document.getElementById('rpt-inv-table');
-    if (!table) { showToast('Generate report first', 'warning'); return; }
-    let csv = 'Product,Category,Stock,Min Level,Selling Price,Value\n';
-    table.querySelectorAll('tbody tr').forEach(row => {
-      const cols = row.querySelectorAll('td');
-      if (cols.length < 6) return;
-      const r = Array.from(cols).map(c => `"${c.innerText.replace(/"/g, '""')}"`);
-      csv += r.join(',') + '\n';
+    if (!lastInventoryData || lastInventoryData.length === 0) { showToast('Generate report first', 'warning'); return; }
+    let csv = 'Product,Category,Barcode,Stock,Min Level,Selling Price (₹),Stock Value (₹)\n';
+    lastInventoryData.forEach(p => {
+      const value = (p.selling_price_paise * p.stock_quantity / 100).toFixed(2);
+      csv += `"${p.product_name}","${p.category_name || ''}","${p.barcode || ''}",${p.stock_quantity},${p.minimum_stock_level},${(p.selling_price_paise/100).toFixed(2)},${value}\n`;
     });
     downloadCSV(csv, `inventory-report-${getToday()}.csv`);
   }
@@ -391,6 +394,7 @@ const ReportsModule = (() => {
         total += p.total_paise; 
         totalItc += (p.gst_paid_paise || 0);
       });
+      lastPurchasesData = purchases;
 
       content.innerHTML = `
         <div class="report-summary mt-12 mb-16">
@@ -413,14 +417,10 @@ const ReportsModule = (() => {
   }
 
   function exportPurchaseCSV() {
-    const table = document.getElementById('rpt-purch-table');
-    if (!table) { showToast('Generate report first', 'warning'); return; }
-    let csv = 'Invoice,Supplier,Total,GST Paid,Date\n';
-    table.querySelectorAll('tbody tr').forEach(row => {
-      const cells = row.querySelectorAll('td');
-      if (cells.length >= 5) {
-        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
-      }
+    if (!lastPurchasesData || lastPurchasesData.length === 0) { showToast('Generate report first', 'warning'); return; }
+    let csv = 'Invoice #,Supplier,Total (₹),GST Paid (₹),Date\n';
+    lastPurchasesData.forEach(p => {
+      csv += `"${p.invoice_number || ''}","${p.supplier_name || ''}",${(p.total_paise/100).toFixed(2)},${((p.gst_paid_paise||0)/100).toFixed(2)},"${p.purchase_date || p.created_at || ''}"\n`;
     });
     downloadCSV(csv, `purchases-${getToday()}.csv`);
   }
@@ -440,6 +440,7 @@ const ReportsModule = (() => {
         content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No services billed in this period</p>';
         return;
       }
+      lastServicesData = sales;
 
       document.getElementById('rpt-services-summary').innerHTML = `
         <div class="summary-card"><span class="sc-value text-teal">${summary.total_sales}</span><span class="sc-label">Service Bills</span></div>
@@ -467,17 +468,11 @@ const ReportsModule = (() => {
   }
 
   function exportServicesCSV() {
-    const rows = document.querySelectorAll('#rpt-services-table tbody tr');
-    if (rows.length === 0 || (rows.length === 1 && rows[0].innerText.includes('No services'))) {
-      showToast('No data to export', 'warning');
-      return;
-    }
-    let csv = 'Receipt #,Cashier,Items,Base Amount,GST,Total,Date\n';
-    rows.forEach(row => {
-      const cells = row.querySelectorAll('td');
-      if (cells.length >= 7) {
-        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
-      }
+    if (!lastServicesData || lastServicesData.length === 0) { showToast('No data to export', 'warning'); return; }
+    let csv = 'Receipt #,Cashier,Items,Base Amount (₹),GST (₹),Total (₹),Date\n';
+    lastServicesData.forEach(s => {
+      const gst = (s.cgst_paise + s.sgst_paise + s.igst_paise) / 100;
+      csv += `"${s.receipt_number || ''}","${s.cashier_name || ''}",${s.item_count},${(s.subtotal_paise/100).toFixed(2)},${gst.toFixed(2)},${(s.grand_total_paise/100).toFixed(2)},"${s.created_at || ''}"\n`;
     });
     downloadCSV(csv, `services-report-${getToday()}.csv`);
   }
@@ -523,6 +518,7 @@ const ReportsModule = (() => {
         content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No data in this period</p>';
         return;
       }
+      lastHsnData = summary;
 
       content.innerHTML = `<div class="card mt-16" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table" id="rpt-hsn-table"><thead><tr>
         <th>HSN Code</th><th>Description</th><th>Qty</th><th>Taxable Value</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total GST</th>
@@ -542,14 +538,10 @@ const ReportsModule = (() => {
   }
 
   function exportHsnCSV() {
-    const table = document.getElementById('rpt-hsn-table');
-    if (!table) { showToast('Generate report first', 'warning'); return; }
-    let csv = 'HSN Code,Description,Qty,Taxable Value,CGST,SGST,IGST,Total GST\n';
-    table.querySelectorAll('tbody tr').forEach(row => {
-      const cells = row.querySelectorAll('td');
-      if (cells.length >= 8) {
-        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
-      }
+    if (!lastHsnData || lastHsnData.length === 0) { showToast('Generate report first', 'warning'); return; }
+    let csv = 'HSN Code,Description,Qty,Taxable Value (₹),CGST (₹),SGST (₹),IGST (₹),Total GST (₹)\n';
+    lastHsnData.forEach(s => {
+      csv += `"${s.hsn_code}","${s.description || ''}",${s.total_quantity},${(s.total_taxable_value/100).toFixed(2)},${(s.total_cgst/100).toFixed(2)},${(s.total_sgst/100).toFixed(2)},${(s.total_igst/100).toFixed(2)},${(s.total_gst/100).toFixed(2)}\n`;
     });
     downloadCSV(csv, `hsn-summary-${getToday()}.csv`);
   }
@@ -567,6 +559,7 @@ const ReportsModule = (() => {
         content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No transactions on this date</p>';
         return;
       }
+      lastReconData = { summary, sales };
 
       let totalCount = 0;
       let totalAmount = 0;
@@ -574,11 +567,21 @@ const ReportsModule = (() => {
       const rows = summary.map(r => {
         totalCount += r.transaction_count;
         totalAmount += r.total_amount;
-        const payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[r.payment_mode] || 'badge-teal';
+        
+        let modeDisplay = (r.payment_mode || 'cash').toUpperCase();
+        let payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[r.payment_mode] || 'badge-teal';
+        let amountColor = 'text-green';
+        
+        if (r.is_return) {
+           modeDisplay = `REFUND - ${modeDisplay}`;
+           payBadge = 'badge-rose';
+           amountColor = 'text-rose';
+        }
+
         return `<tr>
-          <td><span class="badge ${payBadge}">${(r.payment_mode||'cash').toUpperCase()}</span></td>
+          <td><span class="badge ${payBadge}">${modeDisplay}</span></td>
           <td class="fw-700">${r.transaction_count}</td>
-          <td class="fw-700 text-green">${formatRupees(r.total_amount)}</td>
+          <td class="fw-700 ${amountColor}">${formatRupees(r.total_amount)}</td>
         </tr>`;
       }).join('');
 
@@ -587,8 +590,7 @@ const ReportsModule = (() => {
       </tr></thead><tbody>
         ${rows}
         <tr style="background:#f8fafc;">
-          <td class="fw-800">GRAND TO
-          TAL</td>
+          <td class="fw-800">GRAND TOTAL</td>
           <td class="fw-800">${totalCount}</td>
           <td class="fw-800 text-green">${formatRupees(totalAmount)}</td>
         </tr>
@@ -641,16 +643,21 @@ const ReportsModule = (() => {
   }
 
   function exportReconciliationCSV() {
-    const table = document.getElementById('rpt-recon-table');
-    if (!table) { showToast('Generate report first', 'warning'); return; }
-    let csv = 'Payment Mode,Transaction Count,Total Amount\n';
-    table.querySelectorAll('tbody tr').forEach(row => {
-      const cells = row.querySelectorAll('td');
-      if (cells.length >= 3) {
-        csv += Array.from(cells).map(c => `"${c.textContent.trim()}"`).join(',') + '\n';
-      }
+    if (!lastReconData) { showToast('Generate report first', 'warning'); return; }
+    let csv = 'Payment Mode,Type,Transaction Count,Total Amount (₹)\n';
+    lastReconData.summary.forEach(r => {
+      const mode = r.is_return ? `REFUND - ${(r.payment_mode||'cash').toUpperCase()}` : (r.payment_mode||'cash').toUpperCase();
+      csv += `"${mode}","${r.is_return ? 'Refund' : 'Sale'}",${r.transaction_count},${(r.total_amount/100).toFixed(2)}\n`;
     });
-    downloadCSV(csv, `daily-reconciliation-${getToday()}.csv`);
+    csv += '\n';
+    // Detailed transactions
+    csv += 'Receipt No,Time,Customer,Phone,Payment Mode,Type,Amount (₹)\n';
+    lastReconData.sales.forEach(s => {
+      const timeStr = new Date(s.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const type = s.is_return ? 'Refund' : 'Sale';
+      csv += `"${s.receipt_number}","${timeStr}","${s.customer_name||'Walk-in'}","${s.customer_phone||''}","${(s.payment_mode||'cash').toUpperCase()}","${type}",${(s.grand_total_paise/100).toFixed(2)}\n`;
+    });
+    downloadCSV(csv, `sale-report-${getToday()}.csv`);
   }
 
   function downloadCSV(csv, filename) {

@@ -2174,17 +2174,17 @@ ipcMain.handle('dashboard:get-stats', async () => {
     const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
 
     const todaySales = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at LIKE ?",
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at LIKE ? AND is_return = 0 AND receipt_number NOT LIKE 'SRV-%'",
       [`${todayStr}%`]
     );
 
     const monthlySales = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at >= ?",
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total, COUNT(*) as cnt FROM sales WHERE created_at >= ? AND is_return = 0 AND receipt_number NOT LIKE 'SRV-%'",
       [monthStart]
     );
 
     const totalRevenue = queryOne(
-      "SELECT COALESCE(SUM(grand_total_paise), 0) as total FROM sales"
+      "SELECT COALESCE(SUM(grand_total_paise), 0) as total FROM sales WHERE is_return = 0 AND receipt_number NOT LIKE 'SRV-%'"
     );
 
     const totalProducts = queryOne("SELECT COUNT(*) as cnt FROM products WHERE is_active = 1");
@@ -2281,22 +2281,39 @@ ipcMain.handle('reports:sales', async (_e, { startDate, endDate, paymentMode }) 
 
 ipcMain.handle('reports:services', async (_e, { startDate, endDate }) => {
   try {
-    let salesQuery = `SELECT s.*, u.display_name as cashier_name,
-        (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) as item_count
-       FROM sales s
+    // Use item-level service detection to catch services billed on regular INV receipts too
+    let salesQuery = `SELECT DISTINCT s.id, s.receipt_number, s.created_at, s.payment_mode, s.is_return,
+        u.display_name as cashier_name,
+        COALESCE(SUM(si.line_total_paise), 0) as grand_total_paise,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 THEN ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE si.line_total_paise END), 0) as subtotal_paise,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 THEN si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE 0 END) / 2, 0) as cgst_paise,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 THEN si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE 0 END) / 2, 0) as sgst_paise,
+        0 as igst_paise,
+        COUNT(si.id) as item_count
+       FROM sale_items si
+       JOIN sales s ON si.sale_id = s.id
        LEFT JOIN users u ON s.user_id = u.id
+       LEFT JOIN products p ON si.product_id = p.id
+       LEFT JOIN categories c ON p.category_id = c.id
        WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
-       AND s.receipt_number LIKE 'SRV-%'`;
+         AND s.is_return = 0
+         AND (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')
+       GROUP BY s.id`;
 
-    let summaryQuery = `SELECT COUNT(*) as total_sales,
-        COALESCE(SUM(subtotal_paise), 0) as total_subtotal,
-        COALESCE(SUM(discount_paise), 0) as total_discount,
-        COALESCE(SUM(cgst_paise), 0) as total_cgst,
-        COALESCE(SUM(sgst_paise), 0) as total_sgst,
-        COALESCE(SUM(igst_paise), 0) as total_igst,
-        COALESCE(SUM(grand_total_paise), 0) as total_grand
-       FROM sales s WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
-       AND s.receipt_number LIKE 'SRV-%'`;
+    let summaryQuery = `SELECT COUNT(DISTINCT s.id) as total_sales,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 THEN ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE si.line_total_paise END), 0) as total_subtotal,
+        0 as total_discount,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 AND s.is_inter_state = 0 THEN (si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent))) / 2 ELSE 0 END), 0) as total_cgst,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 AND s.is_inter_state = 0 THEN (si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent))) / 2 ELSE 0 END), 0) as total_sgst,
+        COALESCE(SUM(CASE WHEN si.gst_percent > 0 AND s.is_inter_state = 1 THEN si.line_total_paise - ROUND(si.line_total_paise * 100.0 / (100 + si.gst_percent)) ELSE 0 END), 0) as total_igst,
+        COALESCE(SUM(si.line_total_paise), 0) as total_grand
+       FROM sale_items si
+       JOIN sales s ON si.sale_id = s.id
+       LEFT JOIN products p ON si.product_id = p.id
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
+         AND s.is_return = 0
+         AND (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')`;
 
     const params = [startDate, endDate];
     salesQuery += ` ORDER BY s.created_at DESC`;
@@ -2324,7 +2341,10 @@ ipcMain.handle('reports:hsn-summary', async (_e, { startDate, endDate }) => {
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id
       LEFT JOIN products p ON si.product_id = p.id
+      LEFT JOIN categories c ON p.category_id = c.id
       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
+        AND s.is_return = 0
+        AND NOT (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')
     `, [startDate, endDate]);
 
     const map = {};
@@ -2375,20 +2395,33 @@ ipcMain.handle('reports:reconciliation', async (_e, { startDate, endDate }) => {
   try {
     const summary = queryAll(`
       SELECT 
-        payment_mode,
-        SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN 1 ELSE 0 END) as transaction_count,
-        SUM(grand_total_paise) as total_amount
-      FROM sales
-      WHERE substr(created_at, 1, 10) >= ? AND substr(created_at, 1, 10) <= ?
-      GROUP BY payment_mode
+        s.payment_mode,
+        COALESCE(s.is_return, 0) as is_return,
+        COUNT(DISTINCT s.id) as transaction_count,
+        SUM(si.line_total_paise) as total_amount
+      FROM sales s
+      JOIN sale_items si ON s.id = si.sale_id
+      LEFT JOIN products p ON si.product_id = p.id
+      LEFT JOIN categories c ON p.category_id = c.id
+      WHERE substr(s.created_at, 1, 10) >= ? AND substr(s.created_at, 1, 10) <= ?
+        AND s.receipt_number NOT LIKE 'SRV-%'
+        AND NOT (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')
+      GROUP BY s.payment_mode, COALESCE(s.is_return, 0)
     `, [startDate, endDate]);
 
     const sales = queryAll(`
       SELECT 
-        id, receipt_number, customer_name, customer_phone, is_b2b, customer_gstin, payment_mode, grand_total_paise, created_at, COALESCE(is_return, 0) as is_return
-      FROM sales
-      WHERE substr(created_at, 1, 10) >= ? AND substr(created_at, 1, 10) <= ?
-      ORDER BY created_at DESC
+        s.id, s.receipt_number, s.customer_name, s.customer_phone, s.is_b2b, s.customer_gstin, s.payment_mode, s.created_at, COALESCE(s.is_return, 0) as is_return,
+        SUM(si.line_total_paise) as grand_total_paise
+      FROM sales s
+      JOIN sale_items si ON s.id = si.sale_id
+      LEFT JOIN products p ON si.product_id = p.id
+      LEFT JOIN categories c ON p.category_id = c.id
+      WHERE substr(s.created_at, 1, 10) >= ? AND substr(s.created_at, 1, 10) <= ?
+        AND s.receipt_number NOT LIKE 'SRV-%'
+        AND NOT (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')
+      GROUP BY s.id
+      ORDER BY s.created_at DESC
     `, [startDate, endDate]);
 
     return { summary, sales };
@@ -2442,14 +2475,17 @@ ipcMain.handle('reports:purchases', async (_e, { startDate, endDate, supplierId 
 
 ipcMain.handle('reports:profit', async (_e, { startDate, endDate }) => {
   try {
-    // Get all sale items in range with their cost prices
+    // Get all sale items in range with their cost prices, excluding services and returns
     const items = queryAll(
       `SELECT si.quantity, si.free_quantity, si.unit_price_paise, si.line_total_paise, si.gst_percent,
               CASE WHEN si.purchase_price_paise IS NOT NULL THEN si.purchase_price_paise ELSE p.purchase_price_paise END as actual_cost_paise
        FROM sale_items si
        JOIN sales s ON si.sale_id = s.id
        JOIN products p ON si.product_id = p.id
-       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?`,
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE date(s.created_at) >= ? AND date(s.created_at) <= ?
+         AND s.is_return = 0
+         AND NOT (IFNULL(LOWER(c.name), '') LIKE '%service%' OR si.barcode LIKE 'SRV-%')`,
       [startDate, endDate]
     );
 
