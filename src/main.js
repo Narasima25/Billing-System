@@ -2628,6 +2628,7 @@ ipcMain.handle('reports:gstr1', async (_e, { startDate, endDate }) => {
         0 as cancelled_count
       FROM sales
       WHERE date(created_at) >= ? AND date(created_at) <= ? AND is_return = 0
+        AND receipt_number NOT LIKE 'SRV-%'
     `, params);
 
     const docsReturn = queryOne(`
@@ -2638,6 +2639,7 @@ ipcMain.handle('reports:gstr1', async (_e, { startDate, endDate }) => {
         0 as cancelled_count
       FROM sales
       WHERE date(created_at) >= ? AND date(created_at) <= ? AND is_return = 1
+        AND receipt_number NOT LIKE 'SRV-%'
     `, params);
 
     docs.net_count = (docs.total_count || 0) - (docs.cancelled_count || 0);

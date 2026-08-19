@@ -273,13 +273,13 @@ const ReportsModule = (() => {
 
   function exportGstr1CSVs() {
     if (!lastGstrData) return;
-    
+
     // Table 4 (B2B)
     let b2bCsv = 'GSTIN/UIN of Recipient,Receiver Name,Invoice Number,Invoice date,Invoice Value,Place Of Supply,Reverse Charge,Applicable % of Tax Rate,Invoice Type,E-Commerce GSTIN,Rate,Taxable Value,Cess Amount\n';
     lastGstrData.b2b.forEach(r => {
       const pos = r.customer_state_code || (r.customer_gstin ? r.customer_gstin.substring(0, 2) : '97');
-      const rate = r.subtotal_paise > 0 ? (((r.cgst_paise+r.sgst_paise+r.igst_paise) / r.subtotal_paise) * 100).toFixed(2) : 0;
-      b2bCsv += `"${r.customer_gstin}","${r.customer_name}","${r.receipt_number}","${formatDateShort(r.created_at)}",${r.grand_total_paise/100},"${pos}","N","","Regular","",${rate},${r.subtotal_paise/100},0\n`;
+      const rate = r.subtotal_paise > 0 ? (((r.cgst_paise + r.sgst_paise + r.igst_paise) / r.subtotal_paise) * 100).toFixed(2) : 0;
+      b2bCsv += `"${r.customer_gstin}","${r.customer_name}","${r.receipt_number}","${formatDateShort(r.created_at)}",${r.grand_total_paise / 100},"${pos}","N","","Regular","",${rate},${r.subtotal_paise / 100},0\n`;
     });
     if (lastGstrData.b2b.length > 0) downloadCSV(b2bCsv, 'b2b.csv');
 
@@ -288,7 +288,7 @@ const ReportsModule = (() => {
     lastGstrData.b2cLarge.forEach(r => {
       const rate = r.subtotal_paise > 0 ? ((r.igst_paise / r.subtotal_paise) * 100).toFixed(2) : 0;
       const pos = r.customer_state_code || '97';
-      b2clCsv += `"${r.receipt_number}","${formatDateShort(r.created_at)}",${r.grand_total_paise/100},"${pos}","",${rate},${r.subtotal_paise/100},0,""\n`;
+      b2clCsv += `"${r.receipt_number}","${formatDateShort(r.created_at)}",${r.grand_total_paise / 100},"${pos}","",${rate},${r.subtotal_paise / 100},0,""\n`;
     });
     if (lastGstrData.b2cLarge.length > 0) downloadCSV(b2clCsv, 'b2cl.csv');
 
@@ -296,7 +296,7 @@ const ReportsModule = (() => {
     let b2csCsv = 'Type,Place Of Supply,Applicable % of Tax Rate,Rate,Taxable Value,Cess Amount,E-Commerce GSTIN\n';
     lastGstrData.b2cSmall.forEach(r => {
       const pos = r.place_of_supply || (r.is_inter_state ? '97' : '');
-      b2csCsv += `"OE","${pos}","",${r.gst_percent},${r.taxable_value/100},0,""\n`;
+      b2csCsv += `"OE","${pos}","",${r.gst_percent},${r.taxable_value / 100},0,""\n`;
     });
     if (lastGstrData.b2cSmall.length > 0) downloadCSV(b2csCsv, 'b2cs.csv');
 
@@ -305,8 +305,8 @@ const ReportsModule = (() => {
     lastGstrData.creditNotes.forEach(r => {
       if (r.is_b2b) {
         const pos = r.customer_gstin ? r.customer_gstin.substring(0, 2) : '97';
-        const rate = r.subtotal_paise > 0 ? (((r.cgst_paise+r.sgst_paise+r.igst_paise) / r.subtotal_paise) * 100).toFixed(2) : 0;
-        cdnrCsv += `"${r.customer_gstin}","${r.customer_name}","${r.receipt_number}","${formatDateShort(r.created_at)}","C","${pos}","N","Regular",${r.grand_total_paise/100},"",${rate},${r.subtotal_paise/100},0\n`;
+        const rate = r.subtotal_paise > 0 ? (((r.cgst_paise + r.sgst_paise + r.igst_paise) / r.subtotal_paise) * 100).toFixed(2) : 0;
+        cdnrCsv += `"${r.customer_gstin}","${r.customer_name}","${r.receipt_number}","${formatDateShort(r.created_at)}","C","${pos}","N","Regular",${r.grand_total_paise / 100},"",${rate},${r.subtotal_paise / 100},0\n`;
       }
     });
     if (lastGstrData.creditNotes.filter(r => r.is_b2b).length > 0) downloadCSV(cdnrCsv, 'cdnr.csv');
@@ -322,7 +322,7 @@ const ReportsModule = (() => {
       docsCsv += `"Credit Note","${dr.start_num}","${dr.end_num}",${dr.total_count},${dr.cancelled_count},${dr.net_count}\n`;
     }
     downloadCSV(docsCsv, 'docs.csv');
-    
+
     showToast('Multiple CSV files exported', 'success');
   }
 
@@ -354,10 +354,10 @@ const ReportsModule = (() => {
         <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table" id="rpt-inv-table"><thead><tr>
           <th>Product</th><th>Category</th><th>Stock</th><th>Min Level</th><th>Selling ₹</th><th>Value</th>
         </tr></thead><tbody>${products.map(p => {
-          let sc = 'ok';
-          if (p.stock_quantity === 0) sc = 'critical';
-          else if (p.stock_quantity <= p.minimum_stock_level) sc = 'low';
-          return `<tr>
+        let sc = 'ok';
+        if (p.stock_quantity === 0) sc = 'critical';
+        else if (p.stock_quantity <= p.minimum_stock_level) sc = 'low';
+        return `<tr>
             <td class="fw-700">${p.product_name}</td>
             <td class="text-sm">${p.category_name || '—'}</td>
             <td><span class="stock-badge ${sc}">${p.stock_quantity}</span></td>
@@ -365,7 +365,7 @@ const ReportsModule = (() => {
             <td>${formatRupees(p.selling_price_paise)}</td>
             <td class="fw-700">${formatRupees(p.selling_price_paise * p.stock_quantity)}</td>
           </tr>`;
-        }).join('')}</tbody></table></div></div>`;
+      }).join('')}</tbody></table></div></div>`;
     } catch (err) {
       console.error('[Reports] inventory error:', err);
     }
@@ -376,7 +376,7 @@ const ReportsModule = (() => {
     let csv = 'Product,Category,Barcode,Stock,Min Level,Selling Price (₹),Stock Value (₹)\n';
     lastInventoryData.forEach(p => {
       const value = (p.selling_price_paise * p.stock_quantity / 100).toFixed(2);
-      csv += `"${p.product_name}","${p.category_name || ''}","${p.barcode || ''}",${p.stock_quantity},${p.minimum_stock_level},${(p.selling_price_paise/100).toFixed(2)},${value}\n`;
+      csv += `"${p.product_name}","${p.category_name || ''}","${p.barcode || ''}",${p.stock_quantity},${p.minimum_stock_level},${(p.selling_price_paise / 100).toFixed(2)},${value}\n`;
     });
     downloadCSV(csv, `inventory-report-${getToday()}.csv`);
   }
@@ -395,8 +395,8 @@ const ReportsModule = (() => {
 
       let total = 0;
       let totalItc = 0;
-      purchases.forEach(p => { 
-        total += p.total_paise; 
+      purchases.forEach(p => {
+        total += p.total_paise;
         totalItc += (p.gst_paid_paise || 0);
       });
       lastPurchasesData = purchases;
@@ -425,7 +425,7 @@ const ReportsModule = (() => {
     if (!lastPurchasesData || lastPurchasesData.length === 0) { showToast('Generate report first', 'warning'); return; }
     let csv = 'Invoice #,Supplier,Total (₹),GST Paid (₹),Date\n';
     lastPurchasesData.forEach(p => {
-      csv += `"${p.invoice_number || ''}","${p.supplier_name || ''}",${(p.total_paise/100).toFixed(2)},${((p.gst_paid_paise||0)/100).toFixed(2)},"${p.purchase_date || p.created_at || ''}"\n`;
+      csv += `"${p.invoice_number || ''}","${p.supplier_name || ''}",${(p.total_paise / 100).toFixed(2)},${((p.gst_paid_paise || 0) / 100).toFixed(2)},"${p.purchase_date || p.created_at || ''}"\n`;
     });
     downloadCSV(csv, `purchases-${getToday()}.csv`);
   }
@@ -439,7 +439,7 @@ const ReportsModule = (() => {
     try {
       const { summary, sales } = await window.api.reports.services({ startDate: from, endDate: to });
       const content = document.getElementById('rpt-services-content');
-      
+
       if (!sales || sales.length === 0) {
         document.getElementById('rpt-services-summary').innerHTML = '';
         content.innerHTML = '<p class="text-muted mt-16" style="text-align:center;">No services billed in this period</p>';
@@ -457,8 +457,8 @@ const ReportsModule = (() => {
         <div class="card" style="padding:0;"><div class="data-table-wrap" style="max-height:400px;"><table class="data-table" id="rpt-services-table"><thead><tr>
           <th>Receipt #</th><th>Cashier</th><th>Items</th><th>Base Amount</th><th>GST</th><th>Total</th><th>Date</th>
         </tr></thead><tbody>${sales.map(s => {
-          const gst = s.cgst_paise + s.sgst_paise + s.igst_paise;
-          return `<tr>
+        const gst = s.cgst_paise + s.sgst_paise + s.igst_paise;
+        return `<tr>
           <td class="fw-700 font-mono text-sm">${s.receipt_number || '—'}</td>
           <td>${s.cashier_name || '—'}</td>
           <td class="fw-700">${s.item_count}</td>
@@ -477,7 +477,7 @@ const ReportsModule = (() => {
     let csv = 'Receipt #,Cashier,Items,Base Amount (₹),GST (₹),Total (₹),Date\n';
     lastServicesData.forEach(s => {
       const gst = (s.cgst_paise + s.sgst_paise + s.igst_paise) / 100;
-      csv += `"${s.receipt_number || ''}","${s.cashier_name || ''}",${s.item_count},${(s.subtotal_paise/100).toFixed(2)},${gst.toFixed(2)},${(s.grand_total_paise/100).toFixed(2)},"${s.created_at || ''}"\n`;
+      csv += `"${s.receipt_number || ''}","${s.cashier_name || ''}",${s.item_count},${(s.subtotal_paise / 100).toFixed(2)},${gst.toFixed(2)},${(s.grand_total_paise / 100).toFixed(2)},"${s.created_at || ''}"\n`;
     });
     downloadCSV(csv, `services-report-${getToday()}.csv`);
   }
@@ -546,7 +546,7 @@ const ReportsModule = (() => {
     if (!lastHsnData || lastHsnData.length === 0) { showToast('Generate report first', 'warning'); return; }
     let csv = 'HSN Code,Description,Qty,Taxable Value (₹),CGST (₹),SGST (₹),IGST (₹),Total GST (₹)\n';
     lastHsnData.forEach(s => {
-      csv += `"${s.hsn_code}","${s.description || ''}",${s.total_quantity},${(s.total_taxable_value/100).toFixed(2)},${(s.total_cgst/100).toFixed(2)},${(s.total_sgst/100).toFixed(2)},${(s.total_igst/100).toFixed(2)},${(s.total_gst/100).toFixed(2)}\n`;
+      csv += `"${s.hsn_code}","${s.description || ''}",${s.total_quantity},${(s.total_taxable_value / 100).toFixed(2)},${(s.total_cgst / 100).toFixed(2)},${(s.total_sgst / 100).toFixed(2)},${(s.total_igst / 100).toFixed(2)},${(s.total_gst / 100).toFixed(2)}\n`;
     });
     downloadCSV(csv, `hsn-summary-${getToday()}.csv`);
   }
@@ -573,18 +573,18 @@ const ReportsModule = (() => {
 
       const rows = summary.map(r => {
         let modeDisplay = (r.payment_mode || 'cash').toUpperCase();
-        let payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[r.payment_mode] || 'badge-teal';
+        let payBadge = { cash: 'badge-green', upi: 'badge-violet', card: 'badge-blue' }[r.payment_mode] || 'badge-teal';
         let amountColor = 'text-green';
-        
+
         if (r.is_return) {
-           modeDisplay = `REFUND - ${modeDisplay}`;
-           payBadge = 'badge-rose';
-           amountColor = 'text-rose';
-           totalRefundCount += r.transaction_count;
-           totalRefundAmount += r.total_amount;
+          modeDisplay = `REFUND - ${modeDisplay}`;
+          payBadge = 'badge-rose';
+          amountColor = 'text-rose';
+          totalRefundCount += r.transaction_count;
+          totalRefundAmount += r.total_amount;
         } else {
-           totalSalesCount += r.transaction_count;
-           totalSalesAmount += r.total_amount;
+          totalSalesCount += r.transaction_count;
+          totalSalesAmount += r.total_amount;
         }
 
         return `<tr>
@@ -609,23 +609,23 @@ const ReportsModule = (() => {
         const salesRows = sales.map(s => {
           let regStatus = '<span class="badge badge-amber" style="font-size:10px;">Unregistered (Walk-in)</span>';
           if (s.is_b2b) {
-             regStatus = '<span class="badge badge-blue" style="font-size:10px;">Registered (B2B)</span>';
+            regStatus = '<span class="badge badge-blue" style="font-size:10px;">Registered (B2B)</span>';
           } else if (s.customer_phone || s.customer_name) {
-             regStatus = '<span class="badge badge-teal" style="font-size:10px;">Registered Customer</span>';
+            regStatus = '<span class="badge badge-teal" style="font-size:10px;">Registered Customer</span>';
           }
-          
+
           let customerStr = s.customer_name || 'Walk-in';
           if (s.customer_phone) customerStr += `<br><small class="text-muted" style="font-size:11px;">${s.customer_phone}</small>`;
 
-          const timeStr = new Date(s.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-          const payBadge = { cash:'badge-green', upi:'badge-violet', card:'badge-blue' }[s.payment_mode] || 'badge-teal';
+          const timeStr = new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const payBadge = { cash: 'badge-green', upi: 'badge-violet', card: 'badge-blue' }[s.payment_mode] || 'badge-teal';
 
           return `<tr style="cursor:pointer;" onclick="CustomersModule.viewReceiptPreview(${s.id})" title="Click to view detailed receipt">
             <td class="fw-700 font-mono text-sm">${s.receipt_number}</td>
             <td class="text-sm text-muted">${timeStr}</td>
             <td>${customerStr}</td>
             <td>${regStatus}</td>
-            <td><span class="badge ${payBadge}" style="font-size:10px;">${(s.payment_mode||'CASH').toUpperCase()}</span></td>
+            <td><span class="badge ${payBadge}" style="font-size:10px;">${(s.payment_mode || 'CASH').toUpperCase()}</span></td>
             <td class="fw-700 text-green">${formatRupees(s.grand_total_paise)}</td>
             <td style="text-align:right;">
               ${s.is_return ? '' : `<button class="btn btn-ghost btn-sm btn-delete-sale text-rose" title="Delete Receipt" style="padding:4px; margin:0;" onclick="window.deleteReconSale(event, ${s.id})">🗑️</button>`}
@@ -657,12 +657,12 @@ const ReportsModule = (() => {
     let totalCount = 0;
     let totalAmount = 0;
     lastReconData.summary.forEach(r => {
-      const mode = r.is_return ? `REFUND - ${(r.payment_mode||'cash').toUpperCase()}` : (r.payment_mode||'cash').toUpperCase();
-      csv += `"${mode}","${r.is_return ? 'Refund' : 'Sale'}",${r.transaction_count},${(r.total_amount/100).toFixed(2)}\n`;
+      const mode = r.is_return ? `REFUND - ${(r.payment_mode || 'cash').toUpperCase()}` : (r.payment_mode || 'cash').toUpperCase();
+      csv += `"${mode}","${r.is_return ? 'Refund' : 'Sale'}",${r.transaction_count},${(r.total_amount / 100).toFixed(2)}\n`;
       totalCount += r.transaction_count;
       totalAmount += r.total_amount;
     });
-    csv += `"GRAND TOTAL","",${totalCount},${(totalAmount/100).toFixed(2)}\n`;
+    csv += `"GRAND TOTAL","",${totalCount},${(totalAmount / 100).toFixed(2)}\n`;
     downloadCSV(csv, `sale-report-${getToday()}.csv`);
   }
 
