@@ -1923,6 +1923,24 @@ ipcMain.handle('purchases:update-date', async (_e, purchaseId, newDate) => {
   }
 });
 
+ipcMain.handle('purchases:update-invoice', async (_e, purchaseId, newInvoiceNo) => {
+  try {
+    const purchase = db.prepare("SELECT supplier_id FROM purchases WHERE id = ?").get(purchaseId);
+    if (!purchase) return { success: false, error: 'Purchase not found' };
+
+    const existing = db.prepare("SELECT 1 FROM purchases WHERE supplier_id = ? AND invoice_number = ? AND id != ?").get(purchase.supplier_id, newInvoiceNo, purchaseId);
+    if (existing) {
+      return { success: false, error: 'Invoice number already exists for this supplier!' };
+    }
+
+    db.prepare("UPDATE purchases SET invoice_number = ? WHERE id = ?").run(newInvoiceNo, purchaseId);
+    return { success: true };
+  } catch (err) {
+    console.error('[IPC] purchases:update-invoice error:', err);
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('purchases:delete', async (_e, purchaseId) => {
   try {
     const purchaseTransaction = db.transaction(() => {

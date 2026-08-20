@@ -351,6 +351,42 @@ const SuppliersModule = (() => {
           };
         };
       }
+      
+      const editInvoiceBtn = document.getElementById('pd-edit-invoice-btn');
+      if (editInvoiceBtn) {
+        editInvoiceBtn.style.display = 'inline-block';
+        editInvoiceBtn.onclick = () => {
+          const pdInvoice = document.getElementById('pd-invoice-no');
+          const currentVal = invoiceNo || '';
+          pdInvoice.innerHTML = `<input type="text" id="pd-invoice-input" value="${currentVal.replace(/"/g, '&quot;')}" style="padding: 2px 4px; font-size: 14px; border: 1px solid var(--border); border-radius: 4px; width: 120px;"> <button class="btn btn-primary btn-sm" id="pd-invoice-save" style="padding:2px 6px; height:auto; min-height:auto;">Save</button>`;
+          
+          editInvoiceBtn.style.display = 'none';
+          
+          document.getElementById('pd-invoice-save').onclick = async () => {
+            const newInvoiceNo = document.getElementById('pd-invoice-input').value.trim();
+            if (!newInvoiceNo) {
+              showToast('Invoice number cannot be empty', 'error');
+              return;
+            }
+            if (newInvoiceNo === currentVal) {
+              pdInvoice.textContent = invoiceNo || '—';
+              editInvoiceBtn.style.display = 'inline-block';
+              return;
+            }
+            
+            const res = await window.api.purchases.updateInvoice(purchaseId, newInvoiceNo);
+            if (res.success) {
+              showToast('Invoice number updated successfully!', 'success');
+              invoiceNo = newInvoiceNo; // update local variable
+              pdInvoice.textContent = newInvoiceNo;
+              editInvoiceBtn.style.display = 'inline-block';
+            } else {
+              showToast(res.error || 'Failed to update invoice number', 'error');
+            }
+          };
+        };
+      }
+      
       document.getElementById('pd-supplier').textContent = supplierName;
       document.getElementById('pd-status').textContent = status;
       
